@@ -327,6 +327,51 @@ func (v *Visor) Attach(_ context.Context, id string, o AttachOptions) (*AttachSt
 	return a, nil
 }
 
+// Screen is the text of a terminal as a terminal shows it. A line has no
+// trailing spaces. The cursor row and column start at 0.
+type Screen struct {
+	Cols      int      `json:"cols"`
+	Rows      int      `json:"rows"`
+	Lines     []string `json:"lines"`
+	CursorRow int      `json:"cursor_row"`
+	CursorCol int      `json:"cursor_col"`
+}
+
+// Screen gives the terminal of a session as text.
+func (v *Visor) Screen(_ context.Context, id string) (Screen, error) {
+	ph, err := v.terminal(id)
+	if err != nil {
+		return Screen{}, err
+	}
+	return ph.screen(), nil
+}
+
+// Keys writes data to the terminal of a session as typed keys, with no
+// return added.
+func (v *Visor) Keys(_ context.Context, id string, data []byte) error {
+	ph, err := v.terminal(id)
+	if err != nil {
+		return err
+	}
+	return ph.write(data)
+}
+
+// terminal gives the PTY of a live session.
+func (v *Visor) terminal(id string) (*ptyHandle, error) {
+	_, h, err := v.lookup(id)
+	if err != nil {
+		return nil, err
+	}
+	ph, ok := h.(*ptyHandle)
+	if !ok {
+		if h == nil {
+			return nil, fmt.Errorf("%w: session %s has no process", ErrState, id)
+		}
+		return nil, fmt.Errorf("%w: session %s has no terminal", ErrUnsupported, id)
+	}
+	return ph, nil
+}
+
 // View is the view of the attachment.
 func (a *AttachStream) View() AttachView { return a.view }
 

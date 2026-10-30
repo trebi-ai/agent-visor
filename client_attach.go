@@ -74,6 +74,18 @@ func (c *Client) Attach(ctx context.Context, id string, o AttachOptions) (*Attac
 	return &AttachStream{remote: r, view: first.View, session: id}, nil
 }
 
+// Screen gives the terminal of a session as text.
+func (c *Client) Screen(ctx context.Context, id string) (Screen, error) {
+	var out Screen
+	err := c.do(ctx, http.MethodGet, "/v1/sessions/"+url.PathEscape(id)+"/screen", nil, &out)
+	return out, err
+}
+
+// Keys writes data to the terminal of a session as typed keys.
+func (c *Client) Keys(ctx context.Context, id string, data []byte) error {
+	return c.do(ctx, http.MethodPost, "/v1/sessions/"+url.PathEscape(id)+"/keys", keysRequest{Data: data}, nil)
+}
+
 // Handover moves a session between the wire and the pty backend.
 func (c *Client) Handover(ctx context.Context, id string, to Kind) error {
 	return c.do(ctx, http.MethodPost, "/v1/sessions/"+url.PathEscape(id)+"/handover", handoverRequest{To: to}, nil)

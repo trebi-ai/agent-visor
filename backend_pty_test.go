@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -189,6 +190,31 @@ func TestPTYSurvivesVisorRestart(t *testing.T) {
 	}
 	waitState(t, v, s.ID, StateExited)
 	checkSessionSeq(t, v, s.ID)
+}
+
+func TestPTYScreenAndKeys(t *testing.T) {
+	t.Parallel()
+	v := newPTYVisor(t, shortHome(t), nil)
+	defer v.Close(context.Background())
+	// The program asks for the cursor position. No client is attached, so the
+	// emulator of the visor answers.
+	query := `stty -echo -icanon min 1; printf '\033[6n'; r=$(dd bs=1 count=6 2>/dev/null); printf 'got:%s\n' "$(printf %s "$r" | tr -d '\033')"; ` + fakeTUI
+	s, err := v.Start(t.Context(), StartSpec{Command: []string{"sh", "-c", query}, WorkingDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitScreen(t, v, s.ID, "got:[1;1R")
+	waitScreen(t, v, s.ID, "tui ready")
+	if err := v.Keys(t.Context(), s.ID, []byte("hello\r")); err != nil {
+		t.Fatal(err)
+	}
+	sc := waitScreen(t, v, s.ID, "echo:hello")
+	if sc.Cols != 80 || sc.Rows != 24 || len(sc.Lines) != 24 {
+		t.Fatalf("screen size %dx%d with %d lines", sc.Cols, sc.Rows, len(sc.Lines))
+	}
+	if _, err := v.Screen(t.Context(), "nope"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Screen of a missing session: %v", err)
+	}
 }
 
 func TestPTYExitWhileVisorDown(t *testing.T) {
@@ -395,4 +421,20 @@ func checkSessionSeq(t *testing.T, v *Visor, id string) {
 	}
 	defer st.Close()
 	checkSeq(t, collect(t, st, func(e Event) bool { return e.Seq >= s.Seq }), 0)
+}
+
+// waitScreen waits until a line of the screen of session id is want.
+func waitScreen(t *testing.T, v *Visor, id, want string) Screen {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		sc, err := v.Screen(t.Context(), id)
+		if err == nil && slices.Contains(sc.Lines, want) {
+			return sc
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no line %q on the screen: %v %q", want, err, sc.Lines)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }

@@ -646,6 +646,36 @@
       ],
       "type": "object"
     },
+    "Screen": {
+      "properties": {
+        "cols": {
+          "type": "integer"
+        },
+        "cursor_col": {
+          "type": "integer"
+        },
+        "cursor_row": {
+          "type": "integer"
+        },
+        "lines": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rows": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cols",
+        "rows",
+        "lines",
+        "cursor_row",
+        "cursor_col"
+      ],
+      "type": "object"
+    },
     "Session": {
       "properties": {
         "created_at": {
@@ -1141,6 +1171,20 @@
       ],
       "type": "object"
     },
+    "keysRequest": {
+      "properties": {
+        "data": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "data"
+      ],
+      "type": "object"
+    },
     "sendReply": {
       "properties": {
         "delivery": {
@@ -1224,11 +1268,17 @@
     "input": {
       "$ref": "#/$defs/Input"
     },
+    "keys": {
+      "$ref": "#/$defs/keysRequest"
+    },
     "login": {
       "$ref": "#/$defs/Login"
     },
     "project": {
       "$ref": "#/$defs/Project"
+    },
+    "screen": {
+      "$ref": "#/$defs/Screen"
     },
     "send_reply": {
       "$ref": "#/$defs/sendReply"

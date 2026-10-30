@@ -111,6 +111,10 @@ func (f *fakeVisor) Handover(context.Context, string, agentvisor.Kind) error {
 	return agentvisor.ErrUnsupported
 }
 
+func (f *fakeVisor) Screen(context.Context, string) (agentvisor.Screen, error) {
+	return agentvisor.Screen{}, agentvisor.ErrUnsupported
+}
+
 func (f *fakeVisor) Harnesses(context.Context) ([]agentvisor.Harness, error) {
 	return []agentvisor.Harness{
 		{Name: "claude", Installed: true, Version: "2.1.0", Latest: "2.2.0", Path: "/visor/bin/claude/current/claude", Source: agentvisor.SourceVisor, Installs: []string{"2.0.0", "2.1.0"}, Installable: true, Supported: true, AuthMode: agentvisor.AuthSeparate, Auth: agentvisor.AuthOK, EnvKeys: []string{"API_TOKEN"}},

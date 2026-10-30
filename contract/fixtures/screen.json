@@ -1,0 +1,11 @@
+{
+  "cols": 80,
+  "rows": 3,
+  "lines": [
+    "$ make test",
+    "ok",
+    "$"
+  ],
+  "cursor_row": 2,
+  "cursor_col": 2
+}

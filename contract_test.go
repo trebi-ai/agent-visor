@@ -94,6 +94,8 @@ func contractFixtures() []fixture {
 			Payload: json.RawMessage(`{"session_id":"v-1","cwd":"/src/app","hook_event_name":"Stop","last_assistant_message":"Done."}`),
 		}},
 		{"handover", handoverRequest{To: KindPTY}},
+		{"screen", Screen{Cols: 80, Rows: 3, Lines: []string{"$ make test", "ok", "$"}, CursorRow: 2, CursorCol: 2}},
+		{"keys", keysRequest{Data: []byte("\x1b[B\r")}},
 		{"attach_client_frames", []ClientFrame{
 			{Type: ClientAttach, View: ViewTerminal, Cols: 120, Rows: 40},
 			{Type: ClientAck, Seq: 65536},

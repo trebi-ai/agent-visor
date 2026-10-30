@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hinshun/vt10x"
+
 	agentwire "github.com/trebi-ai/agent-wire"
 
 	"github.com/trebi-ai/agent-visor/holder"
@@ -58,6 +60,11 @@ type ptyHandle struct {
 	lease    *AttachStream
 	detached bool
 	ended    bool
+	// vt renders the output for Screen. answers holds its replies to
+	// terminal queries; they go to the PTY while no client holds the lease.
+	vt      vt10x.Terminal
+	answers []byte
+	fresh   bool
 }
 
 var (
@@ -70,6 +77,9 @@ const (
 	holderRedial      = 2 * time.Second
 	holderPoll        = 20 * time.Millisecond
 	defaultTerm       = "xterm-256color"
+	// defaultCols and defaultRows are the size of a holder that gave none.
+	defaultCols = 80
+	defaultRows = 24
 )
 
 func newPTYBackend(home string, holderCmd []string, termCmd TerminalCommand, log *slog.Logger) *ptyBackend {
@@ -101,7 +111,7 @@ func (b *ptyBackend) Start(ctx context.Context, l Launch) (Handle, error) {
 	if err != nil {
 		return nil, err
 	}
-	h := b.track(id, l.Session.VendorID, c)
+	h := b.track(id, l.Session.VendorID, c, true)
 	if l.Prompt != nil {
 		if _, err := h.Send(ctx, *l.Prompt); err != nil {
 			_ = h.Close(context.WithoutCancel(ctx)) // the send error is the one to report
@@ -130,10 +140,10 @@ func (b *ptyBackend) Recover(ctx context.Context) ([]Handle, error) {
 			}
 			continue
 		}
-		out = append(out, b.track(id, "", c))
+		out = append(out, b.track(id, "", c, false))
 	}
 	for _, id := range exits {
-		out = append(out, b.track(id, "", nil))
+		out = append(out, b.track(id, "", nil, false))
 	}
 	return out, nil
 }
@@ -183,16 +193,18 @@ func (b *ptyBackend) command(l Launch, env []string) ([]string, error) {
 }
 
 // track starts the pump of a holder. A nil client is a holder that ended
-// while no visor ran.
-func (b *ptyBackend) track(id, vendor string, c *holder.Client) *ptyHandle {
+// while no visor ran. A new session answers the terminal queries in its
+// first snapshot; a recovered one does not, because they are old.
+func (b *ptyBackend) track(id, vendor string, c *holder.Client, fresh bool) *ptyHandle {
 	h := &ptyHandle{
-		b: b, id: id, vendor: vendor, c: c, events: make(chan Event, 8),
+		b: b, id: id, vendor: vendor, c: c, fresh: fresh, events: make(chan Event, 8),
 		stop: make(chan struct{}), done: make(chan struct{}), subs: map[*AttachStream]struct{}{},
 	}
 	if c != nil {
 		hello := c.Hello()
 		h.pid, h.size = hello.ChildPID, holder.Size{Cols: hello.Cols, Rows: hello.Rows}
 	}
+	h.vt = h.newVT()
 	b.mu.Lock()
 	b.handles[h] = struct{}{}
 	b.mu.Unlock()
@@ -481,29 +493,77 @@ func (h *ptyHandle) resnapshot(a *AttachStream) {
 // the new buffer.
 func (h *ptyHandle) snapshot(p []byte) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	h.ring = p
+	h.vt = h.newVT()
+	_, _ = h.vt.Write(p) // the emulator never fails a write
 	for a := range h.subs {
 		a.markStale()
 	}
+	h.mu.Unlock()
+	h.answer(h.fresh)
+	h.fresh = false
 }
 
 func (h *ptyHandle) output(p []byte) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	h.ring = append(h.ring, p...)
 	if over := len(h.ring) - holder.DefaultRing; over > 0 {
 		h.ring = append(h.ring[:0:0], h.ring[over:]...)
 	}
+	_, _ = h.vt.Write(p) // the emulator never fails a write
 	for a := range h.subs {
 		a.output(p)
 	}
+	h.mu.Unlock()
+	h.answer(true)
+}
+
+// answer sends the replies of the emulator to the PTY when send is true and
+// no client holds the lease. Else the attached terminal answers.
+func (h *ptyHandle) answer(send bool) {
+	h.mu.Lock()
+	answers, c := h.answers, h.c
+	h.answers = nil
+	send = send && h.lease == nil && c != nil && len(answers) > 0
+	h.mu.Unlock()
+	if !send {
+		return
+	}
+	if err := c.Input(answers); err != nil {
+		h.b.log.Debug("answer a terminal query", "session_id", h.id, "err", err)
+	}
+}
+
+// newVT gives an emulator of the PTY size. The caller holds h.mu, or owns h.
+func (h *ptyHandle) newVT() vt10x.Terminal {
+	return vt10x.New(vt10x.WithSize(cmp.Or(h.size.Cols, defaultCols), cmp.Or(h.size.Rows, defaultRows)), vt10x.WithWriter(answerWriter{h}))
+}
+
+// screen renders the terminal as text, with no trailing spaces on a line.
+func (h *ptyHandle) screen() Screen {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.vt.Lock()
+	defer h.vt.Unlock()
+	cols, rows := h.vt.Size()
+	out := Screen{Cols: cols, Rows: rows, Lines: make([]string, rows)}
+	line := make([]rune, cols)
+	for y := range rows {
+		for x := range cols {
+			line[x] = h.vt.Cell(x, y).Char
+		}
+		out.Lines[y] = strings.TrimRight(string(line), " \x00")
+	}
+	cur := h.vt.Cursor()
+	out.CursorRow, out.CursorCol = cur.Y, cur.X
+	return out
 }
 
 func (h *ptyHandle) resized(s holder.Size) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.size = s
+	h.vt.Resize(cmp.Or(s.Cols, defaultCols), cmp.Or(s.Rows, defaultRows))
 	for a := range h.subs {
 		a.push(Frame{Type: FrameResized, Cols: s.Cols, Rows: s.Rows})
 	}
@@ -516,6 +576,15 @@ func (h *ptyHandle) endAll(reason EndReason) {
 	for a := range h.subs {
 		a.end(reason)
 	}
+}
+
+// answerWriter keeps the replies of the emulator. The emulator writes while
+// h.mu is held.
+type answerWriter struct{ h *ptyHandle }
+
+func (w answerWriter) Write(p []byte) (int, error) {
+	w.h.answers = append(w.h.answers, p...)
+	return len(p), nil
 }
 
 // childEnv gives the env of the process in the PTY: the env of the visor

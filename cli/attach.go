@@ -49,6 +49,27 @@ func (a *app) sessionShell(ctx context.Context, cmd *cli.Command) error {
 	})
 }
 
+func (a *app) sessionScreen(ctx context.Context, cmd *cli.Command) error {
+	if err := args(cmd, 1, "<session-id>"); err != nil {
+		return err
+	}
+	return a.with(ctx, cmd, func(v Visor) error {
+		sc, err := v.Screen(ctx, cmd.Args().First())
+		if err != nil {
+			return err
+		}
+		if p := a.out(cmd); p.json {
+			return p.JSON(sc)
+		}
+		for _, l := range sc.Lines {
+			if _, err := fmt.Fprintln(a.opts.Stdout, l); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // sessionHandover moves a session to the other backend: wire to pty, or pty
 // to wire.
 func (a *app) sessionHandover(ctx context.Context, cmd *cli.Command) error {

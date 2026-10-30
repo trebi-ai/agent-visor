@@ -14,7 +14,27 @@ func (s *Server) attachRoutes() []route {
 	return []route{
 		{"GET /v1/sessions/{id}/attach", s.attach},
 		{"POST /v1/sessions/{id}/handover", s.handover},
+		{"GET /v1/sessions/{id}/screen", s.screen},
+		{"POST /v1/sessions/{id}/keys", s.keys},
 	}
+}
+
+// keysRequest is the body of a keys call. Data is base64 in JSON.
+type keysRequest struct {
+	Data []byte `json:"data"`
+}
+
+func (s *Server) screen(w http.ResponseWriter, r *http.Request) {
+	sc, err := s.v.Screen(r.Context(), r.PathValue("id"))
+	s.reply(w, http.StatusOK, sc, err)
+}
+
+func (s *Server) keys(w http.ResponseWriter, r *http.Request) {
+	var in keysRequest
+	if !s.decode(w, r, &in) {
+		return
+	}
+	s.reply(w, http.StatusNoContent, nil, s.v.Keys(r.Context(), r.PathValue("id"), in.Data))
 }
 
 // handoverRequest is the body of a handover.

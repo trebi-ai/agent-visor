@@ -65,6 +65,7 @@ func (a *app) sessionCommand() *cli.Command {
 				},
 			},
 			{Name: "interrupt", Usage: "Stop the current turn", ArgsUsage: id, Action: a.sessionInterrupt},
+			{Name: "screen", Usage: "Print the terminal of a session as text", ArgsUsage: id, Action: a.sessionScreen},
 			{Name: "stop", Usage: "End a session", ArgsUsage: id, Action: a.sessionStop},
 			{Name: "resume", Usage: "Resume a suspended or lost session (default prompt: " + strconv.Quote(defaultResume) + ")", ArgsUsage: id + " [prompt]", Action: a.sessionResume},
 			{

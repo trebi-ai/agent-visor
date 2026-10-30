@@ -47,3 +47,5 @@
 - Add `harness.Manager.Busy`.
 - Fix: an answer that returns after the end of the turn no longer moves an idle session back to running.
 - Fix: a PTY session that ends while the holder has dropped the visor gets its last output from `pty.log`.
+- Add `Visor.Screen`, `Client.Screen`, `Visor.Keys`, and `Client.Keys`, with the routes `GET /v1/sessions/{id}/screen` and `POST /v1/sessions/{id}/keys`. A terminal emulator in the visor renders the PTY output as text. While no client holds the size lease, the emulator answers the terminal queries of the program, for example the cursor position.
+- Add the CLI command `session screen`.

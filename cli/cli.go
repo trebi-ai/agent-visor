@@ -63,6 +63,7 @@ type Visor interface {
 	RemoveWorkdir(ctx context.Context, id string, force bool) error
 	Attach(ctx context.Context, id string, o agentvisor.AttachOptions) (*agentvisor.AttachStream, error)
 	Handover(ctx context.Context, id string, to agentvisor.Kind) error
+	Screen(ctx context.Context, id string) (agentvisor.Screen, error)
 	Harnesses(ctx context.Context) ([]agentvisor.Harness, error)
 	Harness(ctx context.Context, name string) (agentvisor.Harness, error)
 	InstallHarness(ctx context.Context, name, version string) (agentvisor.Harness, error)
