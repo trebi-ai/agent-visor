@@ -21,6 +21,7 @@ import (
 
 	agentwire "github.com/trebi-ai/agent-wire"
 
+	"github.com/trebi-ai/agent-visor/harness"
 	"github.com/trebi-ai/agent-visor/internal/store"
 	"github.com/trebi-ai/agent-visor/workdir"
 )
@@ -43,6 +44,9 @@ type Options struct {
 	// Drivers replace agent-wire drivers, for tests (for example the fake
 	// harness with a script).
 	Drivers map[string]agentwire.Driver
+	// Harness configures the harness inventory. The visor sets its InUse,
+	// OnChange, and Logger.
+	Harness HarnessOptions
 	Logger  *slog.Logger
 	// KeepExited is how long the visor keeps an exited session and its
 	// events. Zero keeps them for 7 days.
@@ -62,13 +66,14 @@ type Info struct {
 
 // Visor holds the sessions of one product on one machine.
 type Visor struct {
-	opts     Options
-	log      *slog.Logger
-	st       *store.Store
-	events   *eventLog
-	workdirs *workdir.Manager
-	wire     *agentwire.Runtime
-	backends map[Kind]Backend
+	opts      Options
+	log       *slog.Logger
+	st        *store.Store
+	events    *eventLog
+	workdirs  *workdir.Manager
+	wire      *agentwire.Runtime
+	harnesses *harness.Manager
+	backends  map[Kind]Backend
 
 	ctx    context.Context //nolint:containedctx // the process-lifetime context that Close cancels
 	cancel context.CancelFunc
@@ -148,6 +153,7 @@ func New(ctx context.Context, o Options) (*Visor, error) {
 	if err := v.wire.Reconcile(); err != nil {
 		v.log.Warn("reconcile the agent-wire ledger", "err", err)
 	}
+	v.harnesses = harness.New(o.Home, st, v.wire, v.harnessOptions())
 	v.backends[KindWire] = newWireBackend(v.wire)
 	for _, b := range o.Backends {
 		v.backends[b.Kind()] = b
@@ -408,6 +414,9 @@ func (v *Visor) Close(ctx context.Context) error {
 		}
 	}
 	v.wg.Wait()
+	if err := v.harnesses.Close(ctx); err != nil {
+		v.log.Warn("close the harness manager", "err", err)
+	}
 	v.cancel()
 	for _, b := range v.backends {
 		if err := b.Close(ctx); err != nil {
@@ -525,14 +534,19 @@ func (v *Visor) launch(ctx context.Context, rec *record, b Backend, spec StartSp
 	v.mu.Lock()
 	s := rec.s
 	v.mu.Unlock()
+	hl, err := v.harnesses.Launch(ctx, spec.Harness)
+	spec.ExtraArgs = append(hl.Args, spec.ExtraArgs...)
 	l := Launch{
-		Session: s, Spec: spec, Dir: s.WorkingDir, Resume: resume, Prompt: prompt,
-		Env: mergeEnv(v.opts.Env, spec.Env, visorEnv(s, w, v.opts.Socket)),
+		Session: s, Spec: spec, Dir: s.WorkingDir, Resume: resume, Prompt: prompt, Binary: hl.Binary, Home: hl.Home,
+		Env: mergeEnv(v.opts.Env, hl.Env, spec.Env, visorEnv(s, w, v.opts.Socket)),
 	}
 	if prompt != nil {
 		v.emit(ctx, rec, Event{Type: EventUser, Text: prompt.Text})
 	}
-	h, err := b.Start(ctx, l)
+	var h Handle
+	if err == nil {
+		h, err = b.Start(ctx, l)
+	}
 	if err != nil {
 		v.mu.Lock()
 		rec.s.Error = err.Error()
@@ -604,6 +618,10 @@ func (v *Visor) observe(rec *record, e Event) {
 		})
 	case EventExit:
 		v.update(ctx, rec, func(s *Session) { s.ExitCode, s.Error = e.ExitCode, cmp.Or(e.Error, s.Error) })
+	case EventLimits:
+		if e.Limits != nil {
+			v.harnesses.SetLimits(ctx, rec.s.Harness, *e.Limits)
+		}
 	}
 	v.emit(ctx, rec, e)
 	if to, ok := v.stateAfter(rec, e); ok {

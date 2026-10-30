@@ -13,3 +13,9 @@
 - Add the `contract/` folder: the routes, the JSON schema, and fixtures, checked by `TestContract`.
 - Add the `service` package: install the visor as a LaunchAgent or a systemd user unit, and `Ensure`.
 - Add JSON types for permissions, MCP servers, skills, and attachments in `StartSpec` and `Input`.
+- Add the `harness` package and the `Visor` harness methods: `Harnesses`, `Harness`, `InstallHarness`, `UpdateHarness`, `SetHarnessAuth`, `LoginHarness`, `LogoutHarness`, `HarnessModels`, and `SetHarnessEnv`.
+- Install a visor copy of a harness from the agent-wire recipe in `bin/<harness>/<version>/` and move the `current` link. A failed install keeps the current version. An install or an update gives `ErrBusy` while a live session uses the harness.
+- Add the auth modes `shared` (the user login) and `separate` (`harness/<harness>/` in the visor home), and a login in a pipe that gives the URL or the device code.
+- Keep the harness env in `harness/<harness>.env.json` with mode 0600. A session gets the env layers visor, harness, and session. The API returns only the env keys.
+- Set `Launch.Binary`, `Launch.Home`, and the harness env when a session starts. Emit `harness.changed` on each harness change.
+- Move `Limits` and `LimitWindow` to the `harness` package. The root types are aliases.

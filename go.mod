@@ -17,3 +17,6 @@ require (
 	modernc.org/memory v1.12.1 // indirect
 	modernc.org/sqlite v1.59.0 // indirect
 )
+
+// TODO(release): drop this replace when agent-wire v0.8.0 is tagged
+replace github.com/trebi-ai/agent-wire => ../agent-wire

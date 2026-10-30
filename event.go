@@ -94,22 +94,6 @@ type Usage struct {
 	CostUSD       float64 `json:"cost_usd,omitempty"`
 }
 
-// Limits is the plan limit state of the account behind a harness.
-type Limits struct {
-	Plan     string        `json:"plan,omitempty"`
-	Rejected bool          `json:"rejected,omitempty"`
-	Windows  []LimitWindow `json:"windows,omitempty"`
-}
-
-// LimitWindow is the use of one plan limit window.
-type LimitWindow struct {
-	Key         string    `json:"key"`
-	Scope       string    `json:"scope,omitempty"`
-	Minutes     int       `json:"minutes,omitempty"`
-	UsedPercent float64   `json:"used_percent"`
-	ResetsAt    time.Time `json:"resets_at,omitzero"`
-}
-
 // EventStream gives the events after a sequence number: first the log, then
 // the live events. It continues after a slow read with no gap.
 type EventStream struct {
