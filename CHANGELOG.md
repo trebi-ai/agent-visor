@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## v0.1.1 (2026-10-30)
+
+The first release. v0.1.0 has the same API, but its workdir code fails with git before 2.31. Use v0.1.1.
+
 
 - Add the library core: `Visor`, `StartSpec`, `Session`, `Event`, `Filter`, and the `Backend` and `Handle` interfaces.
 - Add the built-in `wire` backend over agent-wire.
