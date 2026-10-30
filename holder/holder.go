@@ -85,9 +85,10 @@ const (
 	peerQueue    = 1024
 	killGrace    = 3 * time.Second
 	drainTimeout = time.Second
-	// maxSocketPath is the macOS limit of a Unix socket path, less one.
-	maxSocketPath = 103
 )
+
+// MaxSocketPath is the macOS limit of a Unix socket path, less one.
+const MaxSocketPath = 103
 
 // ReadConfig reads the config of the holder of session id from r.
 func ReadConfig(r io.Reader, id string) (Config, error) {
@@ -157,8 +158,8 @@ func (c Config) validate() error {
 		return errors.New("holder: no command")
 	case c.Socket == "":
 		return errors.New("holder: no socket path")
-	case len(c.Socket) > maxSocketPath:
-		return fmt.Errorf("holder: the socket path has %d bytes; the limit is %d", len(c.Socket), maxSocketPath)
+	case len(c.Socket) > MaxSocketPath:
+		return fmt.Errorf("holder: the socket path has %d bytes; the limit is %d", len(c.Socket), MaxSocketPath)
 	}
 	return nil
 }

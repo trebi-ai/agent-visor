@@ -3,6 +3,8 @@ package agentvisor
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,18 +19,56 @@ import (
 )
 
 // holders starts holder processes and connects to them. Each backend has
-// its own folder of sockets, exit files, and spools.
+// its own folder of sockets, exit files, and spools. When the home path is
+// too long for a socket path, the sockets go to a short folder in /tmp.
 type holders struct {
-	home string
-	dir  string
-	cmd  []string
+	home    string
+	dir     string
+	sockDir string
+	cmd     []string
 }
 
 func newHolders(home, dir string, cmd []string) *holders {
-	return &holders{home: home, dir: filepath.Join(home, dir), cmd: cmd}
+	hs := &holders{home: home, dir: filepath.Join(home, dir), cmd: cmd}
+	hs.sockDir = hs.dir
+	if len(hs.socket(newID("ses"))) > holder.MaxSocketPath {
+		sum := sha256.Sum256([]byte(home))
+		hs.sockDir = filepath.Join(shortSocketRoot(), hex.EncodeToString(sum[:6]), dir)
+	}
+	return hs
 }
 
-func (hs *holders) socket(id string) string { return filepath.Join(hs.dir, id+".sock") }
+// shortSocketRoot is the folder of the user in /tmp for holder sockets.
+func shortSocketRoot() string {
+	return filepath.Join("/tmp", fmt.Sprintf("agent-visor-%d", os.Getuid()))
+}
+
+// ensureDirs makes the folders of the holders. A socket folder in /tmp must
+// belong to this user and have mode 0700, so that no other user can put a
+// socket in it.
+func (hs *holders) ensureDirs() error {
+	if err := os.MkdirAll(hs.dir, 0o700); err != nil {
+		return fmt.Errorf("make the holder folder: %w", err)
+	}
+	if hs.sockDir == hs.dir {
+		return nil
+	}
+	root := shortSocketRoot()
+	if err := os.MkdirAll(hs.sockDir, 0o700); err != nil {
+		return fmt.Errorf("make the holder socket folder: %w", err)
+	}
+	fi, err := os.Lstat(root)
+	if err != nil {
+		return fmt.Errorf("check the holder socket folder: %w", err)
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !fi.IsDir() || fi.Mode().Perm()&0o077 != 0 || !ok || int(st.Uid) != os.Getuid() {
+		return fmt.Errorf("%w: %s must be a folder of this user with mode 0700", ErrInvalid, root)
+	}
+	return nil
+}
+
+func (hs *holders) socket(id string) string { return filepath.Join(hs.sockDir, id+".sock") }
 
 func (hs *holders) exitFile(id string) string { return filepath.Join(hs.dir, id+".exit") }
 
@@ -40,6 +80,9 @@ func (hs *holders) spool(id string) string { return filepath.Join(hs.dir, id+".s
 func (hs *holders) spawn(ctx context.Context, cfg holder.Config, env []string) (<-chan error, error) {
 	if len(hs.cmd) == 0 {
 		return nil, fmt.Errorf("%w: no holder command", ErrUnsupported)
+	}
+	if err := hs.ensureDirs(); err != nil {
+		return nil, fmt.Errorf("start holder: %w", err)
 	}
 	data, err := json.Marshal(cfg)
 	if err != nil {
@@ -92,15 +135,18 @@ func (hs *holders) dial(ctx context.Context, id string, exited <-chan error, tim
 // scan gives the sessions with a holder socket and the sessions with only
 // an exit file.
 func (hs *holders) scan() (socks, exits []string, err error) {
-	entries, err := os.ReadDir(hs.dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil, nil
-	}
+	entries, err := readDir(hs.dir)
 	if err != nil {
-		return nil, nil, fmt.Errorf("recover holders: %w", err)
+		return nil, nil, err
+	}
+	sockEntries := entries
+	if hs.sockDir != hs.dir {
+		if sockEntries, err = readDir(hs.sockDir); err != nil {
+			return nil, nil, err
+		}
 	}
 	live := map[string]bool{}
-	for _, e := range entries {
+	for _, e := range sockEntries {
 		if id, ok := strings.CutSuffix(e.Name(), ".sock"); ok {
 			live[id] = true
 			socks = append(socks, id)
@@ -112,6 +158,15 @@ func (hs *holders) scan() (socks, exits []string, err error) {
 		}
 	}
 	return socks, exits, nil
+}
+
+// readDir reads a folder of the holders. A missing folder is empty.
+func readDir(dir string) ([]os.DirEntry, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("recover holders: %w", err)
+	}
+	return entries, nil
 }
 
 // readExit reads the exit file that a holder wrote.

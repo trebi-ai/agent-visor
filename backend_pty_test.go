@@ -228,6 +228,36 @@ func TestPTYScreenAndKeys(t *testing.T) {
 	}
 }
 
+// A home path too long for a socket path puts the sockets in /tmp. The
+// session still survives a visor restart.
+func TestPTYLongHome(t *testing.T) {
+	t.Parallel()
+	home := filepath.Join(shortHome(t), strings.Repeat("h", holder.MaxSocketPath))
+	hs := newHolders(home, "holders", nil)
+	if !strings.HasPrefix(hs.sockDir, shortSocketRoot()) {
+		t.Fatalf("socket folder %s", hs.sockDir)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(filepath.Dir(hs.sockDir)) }) // a test folder
+	v := newPTYVisor(t, home, nil)
+	s, err := v.Start(t.Context(), StartSpec{Command: []string{"sh", "-c", fakeTUI}, WorkingDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid := waitState(t, v, s.ID, StateRunning).PID
+	if err := v.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	v = newPTYVisor(t, home, nil)
+	defer v.Close(context.Background())
+	if got := waitState(t, v, s.ID, StateRunning); got.PID != pid {
+		t.Fatalf("recovered PID %d, want %d", got.PID, pid)
+	}
+	if err := v.Stop(t.Context(), s.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, v, s.ID, StateExited)
+}
+
 func TestPTYExitWhileVisorDown(t *testing.T) {
 	t.Parallel()
 	home := shortHome(t)
