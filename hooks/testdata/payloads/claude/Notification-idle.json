@@ -1,0 +1,9 @@
+{
+  "session_id": "5d0c7a52-3f1e-4b8e-9a51-2c6d1f0e8b11",
+  "transcript_path": "/Users/ada/.claude/projects/-Users-ada-Projects-app/5d0c7a52-3f1e-4b8e-9a51-2c6d1f0e8b11.jsonl",
+  "cwd": "/Users/ada/Projects/app",
+  "permission_mode": "default",
+  "hook_event_name": "Notification",
+  "message": "Claude is waiting for your input",
+  "notification_type": "idle_prompt"
+}

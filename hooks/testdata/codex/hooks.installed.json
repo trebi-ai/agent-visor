@@ -1,0 +1,116 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ": other-hook-form=1; if [ -n \"${OTHER_PANE_KEY-}\" ]; then /bin/sh \"${HOME-}/.other/hooks/codex-hook.sh\" || :; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ": agent-visor-hook=1:example; if [ -x '/usr/local/bin/example' ]; then '/usr/local/bin/example' 'visor' 'hook' 'codex'; else cat >/dev/null; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ": other-hook-form=1; if [ -n \"${OTHER_PANE_KEY-}\" ]; then /bin/sh \"${HOME-}/.other/hooks/codex-hook.sh\" || :; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ": agent-visor-hook=1:example; if [ -x '/usr/local/bin/example' ]; then '/usr/local/bin/example' 'visor' 'hook' 'codex'; else cat >/dev/null; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ": other-hook-form=1; if [ -n \"${OTHER_PANE_KEY-}\" ]; then /bin/sh \"${HOME-}/.other/hooks/codex-hook.sh\" || :; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "request_user_input",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ": agent-visor-hook=1:example; if [ -x '/usr/local/bin/example' ]; then '/usr/local/bin/example' 'visor' 'hook' 'codex'; else cat >/dev/null; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ": other-hook-form=1; if [ -n \"${OTHER_PANE_KEY-}\" ]; then /bin/sh \"${HOME-}/.other/hooks/codex-hook.sh\" || :; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ": agent-visor-hook=1:example; if [ -x '/usr/local/bin/example' ]; then '/usr/local/bin/example' 'visor' 'hook' 'codex'; else cat >/dev/null; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ": other-hook-form=1; if [ -n \"${OTHER_PANE_KEY-}\" ]; then /bin/sh \"${HOME-}/.other/hooks/codex-hook.sh\" || :; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ": other-hook-form=1; if [ -n \"${OTHER_PANE_KEY-}\" ]; then /bin/sh \"${HOME-}/.other/hooks/codex-hook.sh\" || :; else { command -p cat 2>/dev/null || cat; } >/dev/null 2>&1 || :; fi",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ": agent-visor-hook=1:example; if [ -x '/usr/local/bin/example' ]; then '/usr/local/bin/example' 'visor' 'hook' 'codex'; else cat >/dev/null; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

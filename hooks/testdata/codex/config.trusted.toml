@@ -1,0 +1,24 @@
+model = "gpt-5.5"
+
+[hooks.state]
+
+[hooks.state."/Users/ada/.codex/hooks.json:session_start:0:0"]
+enabled = true
+trusted_hash = "sha256:d853ef9fbaf2ff5c8504bf2463675664aaf29a8016c6a35293a6ddc053b4f030"
+[hooks.state."/Users/ada/.codex/hooks.json:session_start:1:0"]
+enabled = true
+trusted_hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+[hooks.state."/Users/ada/.codex/hooks.json:user_prompt_submit:1:0"]
+enabled = true
+trusted_hash = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+[hooks.state."/Users/ada/.codex/hooks.json:pre_tool_use:1:0"]
+enabled = true
+trusted_hash = "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+[hooks.state."/Users/ada/.codex/hooks.json:permission_request:1:0"]
+trusted_hash = "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+[hooks.state."/Users/ada/.codex/hooks.json:stop:1:0"]
+enabled = true
+trusted_hash = "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+
+[projects."/Users/ada/Projects/app"]
+trust_level = "trusted"
