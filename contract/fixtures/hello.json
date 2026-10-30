@@ -1,0 +1,6 @@
+{
+  "client": "example",
+  "build": "v1.2.3",
+  "protocol": "agent-visor/1",
+  "binary": "/usr/local/bin/example"
+}

@@ -1,0 +1,6 @@
+{
+  "path": "/src/app",
+  "key": "fix-1",
+  "kind": "worktree",
+  "base": "main"
+}

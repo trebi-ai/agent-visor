@@ -1,0 +1,28 @@
+{
+  "harness": "claude",
+  "model": "sonnet",
+  "effort": "high",
+  "working_dir": "/src/app",
+  "env": {
+    "API_TOKEN": "secret"
+  },
+  "prompt": "Fix the test.",
+  "permissions": {
+    "mode": "ask",
+    "allow_tools": [
+      "Read"
+    ]
+  },
+  "skills": [
+    {
+      "dir": "/src/skills/review"
+    }
+  ],
+  "labels": {
+    "app.run": "r_1"
+  },
+  "restart": {
+    "mode": "resume",
+    "prompt": "Continue."
+  }
+}

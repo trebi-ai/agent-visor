@@ -1,0 +1,63 @@
+[
+  {
+    "seq": 40,
+    "session": "ses_1",
+    "at": "2026-10-30T12:00:00Z",
+    "type": "session.state",
+    "state": "running"
+  },
+  {
+    "seq": 41,
+    "session": "ses_1",
+    "at": "2026-10-30T12:00:00Z",
+    "type": "tool",
+    "tool": {
+      "id": "t1",
+      "name": "Bash",
+      "input": "{\"command\":\"ls\"}",
+      "status": "done",
+      "exit_code": 0
+    }
+  },
+  {
+    "seq": 42,
+    "session": "ses_1",
+    "at": "2026-10-30T12:00:00Z",
+    "type": "request",
+    "request": {
+      "id": "perm_1",
+      "tool": "Bash",
+      "kind": "permission",
+      "question": "Run it?",
+      "input": "{\"command\":\"ls\"}"
+    }
+  },
+  {
+    "seq": 43,
+    "session": "ses_1",
+    "at": "2026-10-30T12:00:00Z",
+    "type": "request.closed",
+    "request_id": "perm_1"
+  },
+  {
+    "seq": 44,
+    "session": "ses_1",
+    "at": "2026-10-30T12:00:00Z",
+    "type": "result",
+    "turn": 1,
+    "result": {
+      "subtype": "success",
+      "text": "Done.",
+      "usage": {
+        "input": 1200,
+        "output": 300,
+        "model": "sonnet"
+      }
+    }
+  },
+  {
+    "seq": 45,
+    "at": "2026-10-30T12:00:00Z",
+    "type": "visor.restarting"
+  }
+]

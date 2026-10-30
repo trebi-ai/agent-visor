@@ -1,0 +1,16 @@
+{
+  "id": "wd_1",
+  "project": "prj_1",
+  "key": "fix-1",
+  "kind": "worktree",
+  "path": "/home/u/.example/visor/worktrees/app-prj_1/fix-1",
+  "branch": "fix-1",
+  "base": "main",
+  "state": "active",
+  "port_base": 41010,
+  "setup": [
+    "make deps"
+  ],
+  "created_at": "2026-10-30T12:00:00Z",
+  "updated_at": "2026-10-30T12:00:00Z"
+}

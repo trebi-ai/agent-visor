@@ -1,0 +1,19 @@
+[
+  "GET /v1/info",
+  "POST /v1/hello",
+  "POST /v1/sessions",
+  "GET /v1/sessions",
+  "GET /v1/sessions/{id}",
+  "DELETE /v1/sessions/{id}",
+  "POST /v1/sessions/{id}/send",
+  "POST /v1/sessions/{id}/interrupt",
+  "POST /v1/sessions/{id}/answer",
+  "GET /v1/projects",
+  "DELETE /v1/projects/{id}",
+  "GET /v1/workdirs",
+  "PUT /v1/workdirs",
+  "POST /v1/workdirs/{id}/archive",
+  "POST /v1/workdirs/{id}/restore",
+  "DELETE /v1/workdirs/{id}",
+  "GET /v1/events"
+]

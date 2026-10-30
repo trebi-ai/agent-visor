@@ -18,6 +18,47 @@ import (
 	"github.com/trebi-ai/agent-visor/internal/store"
 )
 
+// api is the method set that Visor and Client share.
+type api interface {
+	Info(ctx context.Context) (Info, error)
+	Hello(ctx context.Context, h Hello) (Info, error)
+	Start(ctx context.Context, spec StartSpec) (Session, error)
+	Session(ctx context.Context, id string) (Session, error)
+	Sessions(ctx context.Context, f Filter) ([]Session, error)
+	Send(ctx context.Context, id string, in Input) error
+	Interrupt(ctx context.Context, id string) error
+	Answer(ctx context.Context, id, requestID string, a Answer) error
+	Stop(ctx context.Context, id string) error
+	Events(ctx context.Context, f Filter, after uint64) (*EventStream, error)
+	Projects(ctx context.Context, f Filter) ([]Project, error)
+	ForgetProject(ctx context.Context, id string) error
+	Workdirs(ctx context.Context, f Filter) ([]Workdir, error)
+	EnsureWorkdir(ctx context.Context, w WorkdirSpec) (Workdir, error)
+	ArchiveWorkdir(ctx context.Context, id string) error
+	RestoreWorkdir(ctx context.Context, id string) (Workdir, error)
+	RemoveWorkdir(ctx context.Context, id string, force bool) error
+	Close(ctx context.Context) error
+}
+
+type opener func(t *testing.T, home, script string, log *slog.Logger) api
+
+// served is a Client of a visor that the test serves. Close also stops the
+// server and the visor.
+type served struct {
+	*Client
+	ts *testServer
+}
+
+var (
+	_ api = (*Visor)(nil)
+	_ api = (*Client)(nil)
+)
+
+func (s *served) Close(ctx context.Context) error {
+	_ = s.Client.Close(ctx) // the visor close error is the one to report
+	return s.ts.close(ctx)
+}
+
 // Fake harness scripts. Each reads one NDJSON line for each prompt.
 const (
 	scriptTurns = `while read -r line; do
@@ -47,230 +88,246 @@ done`
 
 func TestStartTurnAndReplay(t *testing.T) {
 	t.Parallel()
-	v := newTestVisor(t, t.TempDir(), scriptTurns, nil)
-	defer v.Close(context.Background())
-	s, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "hi", Labels: map[string]string{"app.run": "r1"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if s.Kind != KindWire || s.Role != RoleAgent || s.Workdir == "" || s.Project == "" {
-		t.Fatalf("session defaults: %+v", s)
-	}
-	got := waitState(t, v, s.ID, StateIdle)
-	if got.VendorID != "v1" || got.Turns != 1 {
-		t.Fatalf("after one turn: vendor %q turns %d", got.VendorID, got.Turns)
-	}
-	if err := v.Send(t.Context(), s.ID, Input{Text: "again"}); err != nil {
-		t.Fatal(err)
-	}
-	for waitState(t, v, s.ID, StateIdle).Turns != 2 {
-		time.Sleep(10 * time.Millisecond)
-	}
-	head := got.Seq
-	for after := uint64(0); after < head; after++ {
-		st, err := v.Events(t.Context(), Filter{}, after)
+	eachHost(t, func(t *testing.T, open opener) {
+		v := open(t, t.TempDir(), scriptTurns, nil)
+		defer v.Close(context.Background())
+		s, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "hi", Labels: map[string]string{"app.run": "r1"}})
 		if err != nil {
 			t.Fatal(err)
 		}
-		events := collect(t, st, func(e Event) bool { return e.Seq >= head })
-		checkSeq(t, events, after)
-		_ = st.Close() // a test stream
-	}
-	st, err := v.Events(t.Context(), Filter{Labels: map[string]string{"app.run": "r1"}}, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
-	types := []EventType{}
-	for _, e := range collect(t, st, func(e Event) bool { return e.Type == EventResult }) {
-		types = append(types, e.Type)
-	}
-	want := []EventType{EventSessionState, EventUser, EventSessionState, EventInit, EventAssistant, EventResult}
-	if fmt.Sprint(types) != fmt.Sprint(want) {
-		t.Fatalf("event types %v, want %v", types, want)
-	}
+		if s.Kind != KindWire || s.Role != RoleAgent || s.Workdir == "" || s.Project == "" {
+			t.Fatalf("session defaults: %+v", s)
+		}
+		got := waitState(t, v, s.ID, StateIdle)
+		if got.VendorID != "v1" || got.Turns != 1 {
+			t.Fatalf("after one turn: vendor %q turns %d", got.VendorID, got.Turns)
+		}
+		if err := v.Send(t.Context(), s.ID, Input{Text: "again"}); err != nil {
+			t.Fatal(err)
+		}
+		for waitState(t, v, s.ID, StateIdle).Turns != 2 {
+			time.Sleep(10 * time.Millisecond)
+		}
+		head := got.Seq
+		for after := uint64(0); after < head; after++ {
+			st, err := v.Events(t.Context(), Filter{}, after)
+			if err != nil {
+				t.Fatal(err)
+			}
+			events := collect(t, st, func(e Event) bool { return e.Seq >= head })
+			checkSeq(t, events, after)
+			_ = st.Close() // a test stream
+		}
+		st, err := v.Events(t.Context(), Filter{Labels: map[string]string{"app.run": "r1"}}, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer st.Close()
+		types := []EventType{}
+		for _, e := range collect(t, st, func(e Event) bool { return e.Type == EventResult }) {
+			types = append(types, e.Type)
+		}
+		want := []EventType{EventSessionState, EventUser, EventSessionState, EventInit, EventAssistant, EventResult}
+		if fmt.Sprint(types) != fmt.Sprint(want) {
+			t.Fatalf("event types %v, want %v", types, want)
+		}
+	})
 }
 
 func TestPermissionAnswer(t *testing.T) {
 	t.Parallel()
-	v := newTestVisor(t, t.TempDir(), scriptPermission, nil)
-	defer v.Close(context.Background())
-	s, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "go"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	w := waitState(t, v, s.ID, StateWaiting)
-	if len(w.Pending) != 1 || w.Pending[0].ID != "p1" || w.Pending[0].Question != "Run it?" {
-		t.Fatalf("pending: %+v", w.Pending)
-	}
-	if err := v.Answer(t.Context(), s.ID, "p1", Answer{Allow: true}); err != nil {
-		t.Fatal(err)
-	}
-	if got := waitState(t, v, s.ID, StateIdle); len(got.Pending) != 0 {
-		t.Fatalf("pending after the answer: %+v", got.Pending)
-	}
-	st, err := v.Events(t.Context(), Filter{Session: s.ID}, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
-	closed := false
-	for _, e := range collect(t, st, func(e Event) bool { return e.Type == EventResult }) {
-		closed = closed || (e.Type == EventRequestClosed && e.RequestID == "p1")
-	}
-	if !closed {
-		t.Fatal("no request.closed event")
-	}
+	eachHost(t, func(t *testing.T, open opener) {
+		v := open(t, t.TempDir(), scriptPermission, nil)
+		defer v.Close(context.Background())
+		s, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "go"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := waitState(t, v, s.ID, StateWaiting)
+		if len(w.Pending) != 1 || w.Pending[0].ID != "p1" || w.Pending[0].Question != "Run it?" {
+			t.Fatalf("pending: %+v", w.Pending)
+		}
+		if err := v.Answer(t.Context(), s.ID, "p1", Answer{Allow: true}); err != nil {
+			t.Fatal(err)
+		}
+		if got := waitState(t, v, s.ID, StateIdle); len(got.Pending) != 0 {
+			t.Fatalf("pending after the answer: %+v", got.Pending)
+		}
+		st, err := v.Events(t.Context(), Filter{Session: s.ID}, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer st.Close()
+		closed := false
+		for _, e := range collect(t, st, func(e Event) bool { return e.Type == EventResult }) {
+			closed = closed || (e.Type == EventRequestClosed && e.RequestID == "p1")
+		}
+		if !closed {
+			t.Fatal("no request.closed event")
+		}
+	})
 }
 
 func TestStopAndInterruptStates(t *testing.T) {
 	t.Parallel()
-	v := newTestVisor(t, t.TempDir(), scriptHang, nil)
-	defer v.Close(context.Background())
-	s, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "hang"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitState(t, v, s.ID, StateRunning)
-	if err := v.Stop(t.Context(), s.ID); err != nil {
-		t.Fatal(err)
-	}
-	waitState(t, v, s.ID, StateExited)
-	if err := v.Send(t.Context(), s.ID, Input{Text: "more"}); !errors.Is(err, ErrState) {
-		t.Fatalf("send to an exited session: %v, want ErrState", err)
-	}
-	if _, err := v.Session(t.Context(), "ses_none"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("missing session: %v", err)
-	}
+	eachHost(t, func(t *testing.T, open opener) {
+		v := open(t, t.TempDir(), scriptHang, nil)
+		defer v.Close(context.Background())
+		s, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "hang"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitState(t, v, s.ID, StateRunning)
+		if err := v.Stop(t.Context(), s.ID); err != nil {
+			t.Fatal(err)
+		}
+		waitState(t, v, s.ID, StateExited)
+		if err := v.Send(t.Context(), s.ID, Input{Text: "more"}); !errors.Is(err, ErrState) {
+			t.Fatalf("send to an exited session: %v, want ErrState", err)
+		}
+		if _, err := v.Session(t.Context(), "ses_none"); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("missing session: %v", err)
+		}
+	})
 }
 
 func TestSuspendAndResumeAcrossRestart(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
-	v := newTestVisor(t, home, scriptTurns, nil)
-	s, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "hi"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitState(t, v, s.ID, StateIdle)
-	if err := v.Close(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	v = newTestVisor(t, home, scriptTurns, nil)
-	defer v.Close(context.Background())
-	waitState(t, v, s.ID, StateSuspended)
-	if err := v.Send(t.Context(), s.ID, Input{Text: "back"}); err != nil {
-		t.Fatal(err)
-	}
-	got := waitState(t, v, s.ID, StateIdle)
-	if got.ID != s.ID || got.Turns != 2 {
-		t.Fatalf("resumed session: %+v", got)
-	}
+	eachHost(t, func(t *testing.T, open opener) {
+		home := t.TempDir()
+		v := open(t, home, scriptTurns, nil)
+		s, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "hi"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitState(t, v, s.ID, StateIdle)
+		if err := v.Close(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		v = open(t, home, scriptTurns, nil)
+		defer v.Close(context.Background())
+		waitState(t, v, s.ID, StateSuspended)
+		if err := v.Send(t.Context(), s.ID, Input{Text: "back"}); err != nil {
+			t.Fatal(err)
+		}
+		got := waitState(t, v, s.ID, StateIdle)
+		if got.ID != s.ID || got.Turns != 2 {
+			t.Fatalf("resumed session: %+v", got)
+		}
+	})
 }
 
 func TestLostSessionRestartPolicy(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
-	v := newTestVisor(t, home, scriptHang, nil)
-	keep, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "hang", Restart: RestartPolicy{Mode: RestartResume, Prompt: "continue"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	notify, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "hang"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitState(t, v, keep.ID, StateRunning)
-	waitState(t, v, notify.ID, StateRunning)
-	if err := v.Close(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	v = newTestVisor(t, home, scriptHang, nil)
-	defer v.Close(context.Background())
-	waitState(t, v, notify.ID, StateLost)
-	waitState(t, v, keep.ID, StateIdle)
+	eachHost(t, func(t *testing.T, open opener) {
+		home := t.TempDir()
+		v := open(t, home, scriptHang, nil)
+		keep, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "hang", Restart: RestartPolicy{Mode: RestartResume, Prompt: "continue"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		notify, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "hang"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitState(t, v, keep.ID, StateRunning)
+		waitState(t, v, notify.ID, StateRunning)
+		if err := v.Close(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		v = open(t, home, scriptHang, nil)
+		defer v.Close(context.Background())
+		waitState(t, v, notify.ID, StateLost)
+		waitState(t, v, keep.ID, StateIdle)
+	})
 }
 
 func TestCrashMarksSessionsLost(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
-	st, err := store.Open(t.Context(), filepath.Join(home, "visor.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for id, state := range map[string]State{"ses_run": StateRunning, "ses_idle": StateIdle, "ses_shell": StateIdle} {
-		s := Session{ID: id, Kind: KindWire, State: state, VendorID: "v1", CreatedAt: time.Now()}
-		if id == "ses_shell" {
-			s.Kind, s.VendorID = KindPTY, ""
-		}
-		data, _ := json.Marshal(s) //nolint:errchkjson // a plain struct
-		if err := st.Put(t.Context(), store.KindSession, id, data); err != nil {
+	eachHost(t, func(t *testing.T, open opener) {
+		home := t.TempDir()
+		st, err := store.Open(t.Context(), filepath.Join(home, "visor.db"))
+		if err != nil {
 			t.Fatal(err)
 		}
-	}
-	_ = st.Close() // test setup
-	v := newTestVisor(t, home, scriptTurns, nil)
-	defer v.Close(context.Background())
-	for id, want := range map[string]State{"ses_run": StateLost, "ses_idle": StateSuspended, "ses_shell": StateLost} {
-		if s, _ := v.Session(t.Context(), id); s.State != want { //nolint:errcheck // the state check covers it
-			t.Errorf("%s is %s, want %s", id, s.State, want)
+		for id, state := range map[string]State{"ses_run": StateRunning, "ses_idle": StateIdle, "ses_shell": StateIdle} {
+			s := Session{ID: id, Kind: KindWire, State: state, VendorID: "v1", CreatedAt: time.Now()}
+			if id == "ses_shell" {
+				s.Kind, s.VendorID = KindPTY, ""
+			}
+			data, _ := json.Marshal(s) //nolint:errchkjson // a plain struct
+			if err := st.Put(t.Context(), store.KindSession, id, data); err != nil {
+				t.Fatal(err)
+			}
 		}
-	}
+		_ = st.Close() // test setup
+		v := open(t, home, scriptTurns, nil)
+		defer v.Close(context.Background())
+		for id, want := range map[string]State{"ses_run": StateLost, "ses_idle": StateSuspended, "ses_shell": StateLost} {
+			if s, _ := v.Session(t.Context(), id); s.State != want { //nolint:errcheck // the state check covers it
+				t.Errorf("%s is %s, want %s", id, s.State, want)
+			}
+		}
+	})
 }
 
 func TestSlowReaderGetsEveryEvent(t *testing.T) {
 	t.Parallel()
-	v := newTestVisor(t, t.TempDir(), scriptFlood, nil)
-	defer v.Close(context.Background())
-	st, err := v.Events(t.Context(), Filter{}, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
-	s, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "go"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitState(t, v, s.ID, StateIdle)
-	events := collect(t, st, func(e Event) bool { return e.Type == EventSessionState && e.State == StateIdle })
-	checkSeq(t, events, 0)
-	if len(events) < 6000 {
-		t.Fatalf("got %d events", len(events))
-	}
+	eachHost(t, func(t *testing.T, open opener) {
+		v := open(t, t.TempDir(), scriptFlood, nil)
+		defer v.Close(context.Background())
+		st, err := v.Events(t.Context(), Filter{}, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer st.Close()
+		s, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "go"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitState(t, v, s.ID, StateIdle)
+		events := collect(t, st, func(e Event) bool { return e.Type == EventSessionState && e.State == StateIdle })
+		checkSeq(t, events, 0)
+		if len(events) < 6000 {
+			t.Fatalf("got %d events", len(events))
+		}
+	})
 }
 
 func TestEnvValuesStayInside(t *testing.T) {
 	t.Parallel()
-	const secret = "s3cr3t-value-0042"
-	var logs bytes.Buffer
-	home := t.TempDir()
-	v := newTestVisor(t, home, scriptTurns, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	s, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "hi", Env: map[string]string{"API_TOKEN": secret}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := waitState(t, v, s.ID, StateIdle)
-	if len(got.EnvKeys) != 1 || got.EnvKeys[0] != "API_TOKEN" {
-		t.Fatalf("env keys: %v", got.EnvKeys)
-	}
-	api, _ := json.Marshal(got) //nolint:errchkjson // a plain struct
-	if err := v.Close(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	spec, err := os.Stat(filepath.Join(home, "sessions", s.ID, "spec.json"))
-	if err != nil || spec.Mode().Perm() != 0o600 {
-		t.Fatalf("spec.json mode: %v %v", spec, err)
-	}
-	db, err := os.ReadFile(filepath.Join(home, "visor.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	wal, _ := os.ReadFile(filepath.Join(home, "visor.db-wal")) //nolint:errcheck // the file can be gone after a checkpoint
-	for name, b := range map[string][]byte{"api": api, "logs": logs.Bytes(), "db": db, "wal": wal} {
-		if strings.Contains(string(b), secret) {
-			t.Errorf("the secret is in %s", name)
+	eachHost(t, func(t *testing.T, open opener) {
+		const secret = "s3cr3t-value-0042"
+		var logs bytes.Buffer
+		home := t.TempDir()
+		v := open(t, home, scriptTurns, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+		s, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "hi", Env: map[string]string{"API_TOKEN": secret}})
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
+		got := waitState(t, v, s.ID, StateIdle)
+		if len(got.EnvKeys) != 1 || got.EnvKeys[0] != "API_TOKEN" {
+			t.Fatalf("env keys: %v", got.EnvKeys)
+		}
+		api, _ := json.Marshal(got) //nolint:errchkjson // a plain struct
+		if err := v.Close(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		spec, err := os.Stat(filepath.Join(home, "sessions", s.ID, "spec.json"))
+		if err != nil || spec.Mode().Perm() != 0o600 {
+			t.Fatalf("spec.json mode: %v %v", spec, err)
+		}
+		db, err := os.ReadFile(filepath.Join(home, "visor.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		wal, _ := os.ReadFile(filepath.Join(home, "visor.db-wal")) //nolint:errcheck // the file can be gone after a checkpoint
+		for name, b := range map[string][]byte{"api": api, "logs": logs.Bytes(), "db": db, "wal": wal} {
+			if strings.Contains(string(b), secret) {
+				t.Errorf("the secret is in %s", name)
+			}
+		}
+	})
 }
 
 func TestStartSpecValidate(t *testing.T) {
@@ -327,7 +384,31 @@ func newTestVisor(t *testing.T, home, script string, log *slog.Logger) *Visor {
 	return v
 }
 
-func waitState(t *testing.T, v *Visor, id string, want State) Session {
+// newServedVisor serves a visor on a temporary socket and dials it.
+func newServedVisor(t *testing.T, home, script string, log *slog.Logger) api {
+	t.Helper()
+	sock := shortSocket(t)
+	ts := serveTest(t, newTestVisor(t, home, script, log), sock)
+	return &served{Client: dialTest(t, sock), ts: ts}
+}
+
+// eachHost runs fn on a Visor in the process and on a Client over a socket.
+func eachHost(t *testing.T, fn func(t *testing.T, open opener)) {
+	t.Helper()
+	for name, open := range map[string]opener{
+		"visor": func(t *testing.T, home, script string, log *slog.Logger) api {
+			return newTestVisor(t, home, script, log)
+		},
+		"client": newServedVisor,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			fn(t, open)
+		})
+	}
+}
+
+func waitState(t *testing.T, v api, id string, want State) Session {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for {

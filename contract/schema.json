@@ -1,0 +1,824 @@
+{
+  "$defs": {
+    "Attachment": {
+      "properties": {
+        "data": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "mime": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "mime"
+      ],
+      "type": "object"
+    },
+    "Event": {
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "data": {},
+        "delta": {
+          "type": "boolean"
+        },
+        "end_reason": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "harness": {
+          "type": "string"
+        },
+        "limits": {
+          "$ref": "#/$defs/Limits"
+        },
+        "request": {
+          "$ref": "#/$defs/Request"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "result": {
+          "$ref": "#/$defs/Result"
+        },
+        "seq": {
+          "type": "integer"
+        },
+        "session": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "tool": {
+          "$ref": "#/$defs/Tool"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "type": {
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        },
+        "vendor_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "at",
+        "type"
+      ],
+      "type": "object"
+    },
+    "Hello": {
+      "properties": {
+        "binary": {
+          "type": "string"
+        },
+        "build": {
+          "type": "string"
+        },
+        "client": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "client",
+        "build",
+        "protocol"
+      ],
+      "type": "object"
+    },
+    "Info": {
+      "properties": {
+        "build": {
+          "type": "string"
+        },
+        "client": {
+          "type": "string"
+        },
+        "home": {
+          "type": "string"
+        },
+        "pid": {
+          "type": "integer"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer"
+        },
+        "upgrade": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "build",
+        "protocol",
+        "home",
+        "seq",
+        "pid"
+      ],
+      "type": "object"
+    },
+    "Input": {
+      "properties": {
+        "attachments": {
+          "items": {
+            "$ref": "#/$defs/Attachment"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    },
+    "LimitWindow": {
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "minutes": {
+          "type": "integer"
+        },
+        "resets_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "used_percent": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "key",
+        "used_percent"
+      ],
+      "type": "object"
+    },
+    "Limits": {
+      "properties": {
+        "plan": {
+          "type": "string"
+        },
+        "rejected": {
+          "type": "boolean"
+        },
+        "windows": {
+          "items": {
+            "$ref": "#/$defs/LimitWindow"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "MCPServer": {
+      "properties": {
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command": {
+          "type": "string"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "Permissions": {
+      "properties": {
+        "allow_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "mode": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Project": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "git": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "path",
+        "git",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "Request": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "input": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "question": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "tool_use_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "RestartPolicy": {
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Result": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "end_reason": {
+          "type": "string"
+        },
+        "is_error": {
+          "type": "boolean"
+        },
+        "subtype": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        },
+        "vendor_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "usage"
+      ],
+      "type": "object"
+    },
+    "Session": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "effort": {
+          "type": "string"
+        },
+        "env_keys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "error": {
+          "type": "string"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "harness": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "model": {
+          "type": "string"
+        },
+        "pending": {
+          "items": {
+            "$ref": "#/$defs/Request"
+          },
+          "type": "array"
+        },
+        "pid": {
+          "type": "integer"
+        },
+        "project": {
+          "type": "string"
+        },
+        "restart": {
+          "$ref": "#/$defs/RestartPolicy"
+        },
+        "role": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer"
+        },
+        "state": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "turns": {
+          "type": "integer"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "vendor_id": {
+          "type": "string"
+        },
+        "workdir": {
+          "type": "string"
+        },
+        "working_dir": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "project",
+        "workdir",
+        "kind",
+        "role",
+        "working_dir",
+        "state",
+        "restart",
+        "seq",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "Skill": {
+      "properties": {
+        "dir": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "dir"
+      ],
+      "type": "object"
+    },
+    "Spec": {
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "path": {
+          "type": "string"
+        },
+        "setup": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "teardown": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "StartSpec": {
+      "properties": {
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "effort": {
+          "type": "string"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "extra_args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "harness": {
+          "type": "string"
+        },
+        "instructions": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "mcp_servers": {
+          "items": {
+            "$ref": "#/$defs/MCPServer"
+          },
+          "type": "array"
+        },
+        "model": {
+          "type": "string"
+        },
+        "permissions": {
+          "$ref": "#/$defs/Permissions"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "raw": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "restart": {
+          "$ref": "#/$defs/RestartPolicy"
+        },
+        "resume_id": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "skills": {
+          "items": {
+            "$ref": "#/$defs/Skill"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "workdir": {
+          "type": "string"
+        },
+        "working_dir": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "permissions",
+        "restart"
+      ],
+      "type": "object"
+    },
+    "Tool": {
+      "properties": {
+        "exit_code": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "input": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "Usage": {
+      "properties": {
+        "cache_creation": {
+          "type": "integer"
+        },
+        "cache_read": {
+          "type": "integer"
+        },
+        "cost_usd": {
+          "type": "number"
+        },
+        "input": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "string"
+        },
+        "output": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "Workdir": {
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "path": {
+          "type": "string"
+        },
+        "port_base": {
+          "type": "integer"
+        },
+        "project": {
+          "type": "string"
+        },
+        "setup": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "state": {
+          "type": "string"
+        },
+        "teardown": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "project",
+        "kind",
+        "path",
+        "state",
+        "port_base",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "answerRequest": {
+      "properties": {
+        "allow": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "updated_input": {}
+      },
+      "required": [
+        "request_id",
+        "allow"
+      ],
+      "type": "object"
+    },
+    "errorBody": {
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/errorInfo"
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "type": "object"
+    },
+    "errorInfo": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "agent-visor/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "answer": {
+      "$ref": "#/$defs/answerRequest"
+    },
+    "error": {
+      "$ref": "#/$defs/errorBody"
+    },
+    "events": {
+      "items": {
+        "$ref": "#/$defs/Event"
+      },
+      "type": "array"
+    },
+    "hello": {
+      "$ref": "#/$defs/Hello"
+    },
+    "info": {
+      "$ref": "#/$defs/Info"
+    },
+    "input": {
+      "$ref": "#/$defs/Input"
+    },
+    "project": {
+      "$ref": "#/$defs/Project"
+    },
+    "session": {
+      "$ref": "#/$defs/Session"
+    },
+    "start_spec": {
+      "$ref": "#/$defs/StartSpec"
+    },
+    "workdir": {
+      "$ref": "#/$defs/Workdir"
+    },
+    "workdir_spec": {
+      "$ref": "#/$defs/Spec"
+    }
+  }
+}

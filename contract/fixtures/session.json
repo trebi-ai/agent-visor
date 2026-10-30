@@ -1,0 +1,36 @@
+{
+  "id": "ses_1",
+  "project": "prj_1",
+  "workdir": "wd_1",
+  "kind": "wire",
+  "role": "agent",
+  "harness": "claude",
+  "model": "sonnet",
+  "working_dir": "/src/app",
+  "state": "waiting",
+  "vendor_id": "v-1",
+  "pid": 4243,
+  "labels": {
+    "app.run": "r_1"
+  },
+  "pending": [
+    {
+      "id": "perm_1",
+      "tool": "Bash",
+      "kind": "permission",
+      "question": "Run it?",
+      "input": "{\"command\":\"ls\"}"
+    }
+  ],
+  "restart": {
+    "mode": "resume",
+    "prompt": "Continue."
+  },
+  "env_keys": [
+    "API_TOKEN"
+  ],
+  "seq": 41,
+  "turns": 1,
+  "created_at": "2026-10-30T12:00:00Z",
+  "updated_at": "2026-10-30T12:00:00Z"
+}

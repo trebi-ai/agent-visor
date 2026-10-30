@@ -1,0 +1,201 @@
+package agentvisor
+
+import (
+	"bytes"
+	"encoding/json"
+	"flag"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	agentwire "github.com/trebi-ai/agent-wire"
+)
+
+// fixture is one contract file and the Go value that encodes to it.
+type fixture struct {
+	name string
+	v    any
+}
+
+//nolint:gochecknoglobals // a test flag
+var updateContract = flag.Bool("update", false, "write the contract files from the Go types")
+
+// TestContract checks that the Go types encode to the fixtures, the schema,
+// and the route list in contract/. Run it with -update after a change.
+func TestContract(t *testing.T) {
+	t.Parallel()
+	defs := map[string]any{}
+	messages := map[string]any{}
+	for _, f := range contractFixtures() {
+		got := encodeContract(t, f.v)
+		checkContractFile(t, filepath.Join("contract", "fixtures", f.name+".json"), got)
+		back := reflect.New(reflect.TypeOf(f.v))
+		if err := json.Unmarshal(got, back.Interface()); err != nil {
+			t.Fatalf("%s: decode: %v", f.name, err)
+		}
+		if again := encodeContract(t, back.Elem().Interface()); !bytes.Equal(again, got) {
+			t.Errorf("%s: the fixture does not round-trip:\n%s", f.name, again)
+		}
+		messages[f.name] = jsonSchema(reflect.TypeOf(f.v), defs)
+	}
+	schema := map[string]any{
+		"$schema":    "https://json-schema.org/draft/2020-12/schema",
+		"$id":        Protocol,
+		"properties": messages,
+		"$defs":      defs,
+	}
+	checkContractFile(t, filepath.Join("contract", "schema.json"), encodeContract(t, schema))
+	checkContractFile(t, filepath.Join("contract", "routes.json"), encodeContract(t, contractRoutes()))
+}
+
+func contractFixtures() []fixture {
+	at := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	code := 0
+	req := Request{ID: "perm_1", Tool: "Bash", Kind: "permission", Question: "Run it?", Input: `{"command":"ls"}`}
+	return []fixture{
+		{"hello", Hello{Client: "example", Build: "v1.2.3", Protocol: Protocol, Binary: "/usr/local/bin/example"}},
+		{"info", Info{Build: "v1.2.3", Protocol: Protocol, Client: "example", Home: "/home/u/.example/visor", Seq: 42, PID: 4242}},
+		{"error", errorBody{Error: errorInfo{Code: "not_found", Message: "session ses_1: agentvisor: not found"}}},
+		{"start_spec", StartSpec{
+			Harness: "claude", Model: "sonnet", Effort: "high", WorkingDir: "/src/app", Prompt: "Fix the test.",
+			Env: map[string]string{"API_TOKEN": "secret"}, Labels: map[string]string{"app.run": "r_1"},
+			Permissions: Permissions{Mode: agentwire.PermissionAsk, AllowTools: []string{"Read"}}, Skills: []Skill{{Dir: "/src/skills/review"}}, Restart: RestartPolicy{Mode: RestartResume, Prompt: "Continue."},
+		}},
+		{"session", Session{
+			ID: "ses_1", Project: "prj_1", Workdir: "wd_1", Kind: KindWire, Role: RoleAgent, Harness: "claude", Model: "sonnet",
+			WorkingDir: "/src/app", State: StateWaiting, VendorID: "v-1", PID: 4243, Labels: map[string]string{"app.run": "r_1"},
+			Pending: []Request{req}, Restart: RestartPolicy{Mode: RestartResume, Prompt: "Continue."}, EnvKeys: []string{"API_TOKEN"},
+			Seq: 41, Turns: 1, CreatedAt: at, UpdatedAt: at,
+		}},
+		{"input", Input{Text: "Also run the linter."}},
+		{"answer", answerRequest{RequestID: "perm_1", Answer: Answer{Allow: false, Message: "Use the make target."}}},
+		{"workdir_spec", WorkdirSpec{Path: "/src/app", Key: "fix-1", Kind: WorkdirWorktree, Base: "main"}},
+		{"workdir", Workdir{
+			ID: "wd_1", Project: "prj_1", Key: "fix-1", Kind: WorkdirWorktree, Path: "/home/u/.example/visor/worktrees/app-prj_1/fix-1",
+			Branch: "fix-1", Base: "main", State: WorkdirActive, PortBase: 41010, Setup: []string{"make deps"}, CreatedAt: at, UpdatedAt: at,
+		}},
+		{"project", Project{ID: "prj_1", Name: "app", Path: "/src/app", Git: true, CreatedAt: at}},
+		{"events", []Event{
+			{Seq: 40, Session: "ses_1", At: at, Type: EventSessionState, State: StateRunning},
+			{Seq: 41, Session: "ses_1", At: at, Type: EventTool, Tool: &Tool{ID: "t1", Name: "Bash", Input: `{"command":"ls"}`, Status: "done", ExitCode: &code}},
+			{Seq: 42, Session: "ses_1", At: at, Type: EventRequest, Request: &req},
+			{Seq: 43, Session: "ses_1", At: at, Type: EventRequestClosed, RequestID: "perm_1"},
+			{Seq: 44, Session: "ses_1", At: at, Type: EventResult, Turn: 1, Result: &Result{Subtype: "success", Text: "Done.", Usage: Usage{Input: 1200, Output: 300, Model: "sonnet"}}},
+			{Seq: 45, At: at, Type: EventRestarting},
+		}},
+	}
+}
+
+func contractRoutes() []string {
+	s := &Server{}
+	var out []string
+	for _, table := range [][]route{s.serverRoutes(), s.sessionRoutes(), s.workdirRoutes(), s.eventRoutes()} {
+		for _, r := range table {
+			out = append(out, r.pattern)
+		}
+	}
+	return out
+}
+
+func encodeContract(t *testing.T, v any) []byte {
+	t.Helper()
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append(data, '\n')
+}
+
+func checkContractFile(t *testing.T, path string, want []byte) {
+	t.Helper()
+	if *updateContract {
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, want, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("%v (run the test with -update)", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Errorf("%s does not match the Go types; run the test with -update", path)
+	}
+}
+
+// jsonSchema gives the JSON schema of t. Named structs go to defs.
+func jsonSchema(t reflect.Type, defs map[string]any) any {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	switch {
+	case t == reflect.TypeFor[time.Time]():
+		return map[string]any{"type": "string", "format": "date-time"}
+	case t == reflect.TypeFor[json.RawMessage]():
+		return map[string]any{}
+	}
+	switch t.Kind() {
+	case reflect.Struct:
+		return structSchema(t, defs)
+	case reflect.Slice, reflect.Array:
+		return map[string]any{"type": "array", "items": jsonSchema(t.Elem(), defs)}
+	case reflect.Map:
+		return map[string]any{"type": "object", "additionalProperties": jsonSchema(t.Elem(), defs)}
+	case reflect.String:
+		return map[string]any{"type": "string"}
+	case reflect.Bool:
+		return map[string]any{"type": "boolean"}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return map[string]any{"type": "integer"}
+	case reflect.Float32, reflect.Float64:
+		return map[string]any{"type": "number"}
+	default:
+		return map[string]any{}
+	}
+}
+
+func structSchema(t reflect.Type, defs map[string]any) any {
+	name := t.Name()
+	ref := map[string]any{"$ref": "#/$defs/" + name}
+	if _, ok := defs[name]; ok {
+		return ref
+	}
+	defs[name] = nil // stops recursion
+	props := map[string]any{}
+	var required []string
+	addFields(t, defs, props, &required)
+	obj := map[string]any{"type": "object", "properties": props}
+	if len(required) > 0 {
+		obj["required"] = required
+	}
+	defs[name] = obj
+	return ref
+}
+
+func addFields(t reflect.Type, defs, props map[string]any, required *[]string) {
+	for i := range t.NumField() {
+		f := t.Field(i)
+		tag, opts, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if f.Anonymous && tag == "" {
+			addFields(f.Type, defs, props, required)
+			continue
+		}
+		if !f.IsExported() || tag == "-" {
+			continue
+		}
+		if tag == "" {
+			tag = f.Name
+		}
+		props[tag] = jsonSchema(f.Type, defs)
+		if !strings.Contains(opts, "omitempty") && !strings.Contains(opts, "omitzero") {
+			*required = append(*required, tag)
+		}
+	}
+}

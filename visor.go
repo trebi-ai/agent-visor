@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -75,6 +76,7 @@ type Visor struct {
 
 	mu       sync.Mutex
 	sessions map[string]*record
+	hello    Hello
 	closed   bool
 }
 
@@ -102,6 +104,9 @@ var (
 	ErrBusy        = errors.New("agentvisor: busy")
 	ErrClosed      = errors.New("agentvisor: closed")
 	ErrUnsupported = errors.New("agentvisor: not supported")
+	// ErrProtocol means that the two sides speak socket protocols with a
+	// different major version.
+	ErrProtocol = errors.New("agentvisor: unknown protocol")
 )
 
 // New opens the visor in home, recovers the sessions of the last run, and
@@ -157,6 +162,17 @@ func New(ctx context.Context, o Options) (*Visor, error) {
 // Info describes the visor.
 func (v *Visor) Info(context.Context) (Info, error) {
 	return Info{Build: v.opts.Build, Protocol: Protocol, Client: v.opts.Client, Home: v.opts.Home, Seq: v.events.head(), PID: os.Getpid()}, nil
+}
+
+// Hello records the product that connects and describes the visor.
+func (v *Visor) Hello(ctx context.Context, h Hello) (Info, error) {
+	if h.Protocol != "" && protocolMajor(h.Protocol) != protocolMajor(Protocol) {
+		v.log.Warn("a client speaks another protocol", "client", h.Client, "protocol", h.Protocol)
+	}
+	v.mu.Lock()
+	v.hello = h
+	v.mu.Unlock()
+	return v.Info(ctx)
 }
 
 // Start starts a session.
@@ -890,6 +906,14 @@ func moduleBuild() string {
 		return bi.Main.Version
 	}
 	return "dev"
+}
+
+// protocolMajor gives the major version of a protocol name, for example 1
+// for agent-visor/1.
+func protocolMajor(p string) string {
+	_, v, _ := strings.Cut(p, "/")
+	major, _, _ := strings.Cut(v, ".")
+	return major
 }
 
 func newID(prefix string) string {

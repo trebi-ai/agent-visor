@@ -38,8 +38,8 @@ func (b *wireBackend) Caps(string) Caps {
 func (b *wireBackend) Start(ctx context.Context, l Launch) (Handle, error) {
 	req := agentwire.StartRequest{
 		Harness: agentwire.Harness(l.Spec.Harness), Binary: l.Binary, WorkingDir: l.Dir, Env: l.Env, Home: l.Home,
-		Model: l.Spec.Model, Effort: l.Spec.Effort, Permissions: l.Spec.Permissions, MCPServers: l.Spec.MCPServers,
-		Skills: l.Spec.Skills, Instructions: l.Spec.Instructions, ExtraArgs: l.Spec.ExtraArgs, Raw: l.Spec.Raw,
+		Model: l.Spec.Model, Effort: l.Spec.Effort, Permissions: l.Spec.Permissions.wire(), MCPServers: wireMCPServers(l.Spec.MCPServers),
+		Skills: wireSkills(l.Spec.Skills), Instructions: l.Spec.Instructions, ExtraArgs: l.Spec.ExtraArgs, Raw: l.Spec.Raw,
 	}
 	var (
 		s   agentwire.Session
@@ -77,7 +77,7 @@ func (h *wireHandle) VendorID() string { return h.s.ID() }
 func (h *wireHandle) PID() int { return h.s.PID() }
 
 func (h *wireHandle) Send(ctx context.Context, in Input) error {
-	_, err := agentwire.Send(ctx, h.s, agentwire.Prompt{Text: in.Text, Kind: in.Kind, Attachments: in.Attachments})
+	_, err := agentwire.Send(ctx, h.s, agentwire.Prompt{Text: in.Text, Kind: in.Kind, Attachments: wireAttachments(in.Attachments)})
 	if err != nil {
 		return fmt.Errorf("send to %s: %w", h.id, err)
 	}
@@ -103,4 +103,32 @@ func (h *wireHandle) pump() {
 	for e := range h.s.Events() {
 		h.ch <- wireEvent(e)
 	}
+}
+
+func (p Permissions) wire() agentwire.PermissionPolicy {
+	return agentwire.PermissionPolicy{Mode: p.Mode, AllowTools: p.AllowTools}
+}
+
+func wireMCPServers(in []MCPServer) []agentwire.MCPServer {
+	var out []agentwire.MCPServer
+	for _, m := range in {
+		out = append(out, agentwire.MCPServer{Name: m.Name, Command: m.Command, Args: m.Args, Env: m.Env, URL: m.URL, Headers: m.Headers})
+	}
+	return out
+}
+
+func wireSkills(in []Skill) []agentwire.Skill {
+	var out []agentwire.Skill
+	for _, s := range in {
+		out = append(out, agentwire.Skill{Name: s.Name, Dir: s.Dir})
+	}
+	return out
+}
+
+func wireAttachments(in []Attachment) []agentwire.Attachment {
+	var out []agentwire.Attachment
+	for _, a := range in {
+		out = append(out, agentwire.Attachment{MIME: a.MIME, Path: a.Path, Data: a.Data})
+	}
+	return out
 }

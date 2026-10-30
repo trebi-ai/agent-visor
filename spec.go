@@ -63,11 +63,11 @@ type StartSpec struct {
 	Env          map[string]string `json:"env,omitempty"`
 	Instructions string            `json:"instructions,omitempty"`
 	// Prompt is the first turn. Empty starts the session idle.
-	Prompt      string                     `json:"prompt,omitempty"`
-	Permissions agentwire.PermissionPolicy `json:"permissions"`
-	MCPServers  []agentwire.MCPServer      `json:"mcp_servers,omitempty"`
-	Skills      []agentwire.Skill          `json:"skills,omitempty"`
-	ExtraArgs   []string                   `json:"extra_args,omitempty"`
+	Prompt      string      `json:"prompt,omitempty"`
+	Permissions Permissions `json:"permissions"`
+	MCPServers  []MCPServer `json:"mcp_servers,omitempty"`
+	Skills      []Skill     `json:"skills,omitempty"`
+	ExtraArgs   []string    `json:"extra_args,omitempty"`
 	// ResumeID is a vendor session id to resume.
 	ResumeID string            `json:"resume_id,omitempty"`
 	Labels   map[string]string `json:"labels,omitempty"`
@@ -75,12 +75,47 @@ type StartSpec struct {
 	Raw      map[string]any    `json:"raw,omitempty"`
 }
 
+// Permissions is the permission policy of a session.
+type Permissions struct {
+	// Mode is ask, auto_edit, auto, or inherit. Empty is ask.
+	Mode agentwire.PermissionMode `json:"mode,omitempty"`
+	// AllowTools are tools that need no answer. A pattern can end in "*".
+	AllowTools []string `json:"allow_tools,omitempty"`
+}
+
+// MCPServer is one MCP server for a session. Command selects a stdio server;
+// URL selects an HTTP server.
+type MCPServer struct {
+	Name    string            `json:"name"`
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	URL     string            `json:"url,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+// Skill is one extra skill for a session.
+type Skill struct {
+	// Name replaces the name in the SKILL.md front matter.
+	Name string `json:"name,omitempty"`
+	// Dir is the folder that holds SKILL.md.
+	Dir string `json:"dir"`
+}
+
+// Attachment is a file or an image that goes with a turn. Data wins over
+// Path.
+type Attachment struct {
+	MIME string `json:"mime"`
+	Path string `json:"path,omitempty"`
+	Data []byte `json:"data,omitempty"`
+}
+
 // Input is one user turn.
 type Input struct {
 	Text string `json:"text"`
 	// Kind is an opaque origin tag that the visor passes to the harness.
-	Kind        string                 `json:"kind,omitempty"`
-	Attachments []agentwire.Attachment `json:"attachments,omitempty"`
+	Kind        string       `json:"kind,omitempty"`
+	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
 // Answer decides an open request.
