@@ -66,6 +66,9 @@
   {
     "seq": 45,
     "at": "2026-10-30T12:00:00Z",
-    "type": "visor.restarting"
+    "type": "visor.restarting",
+    "data": {
+      "build": "v1.2.4"
+    }
   }
 ]

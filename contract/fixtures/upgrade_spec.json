@@ -1,0 +1,5 @@
+{
+  "binary": "/usr/local/bin/example",
+  "build": "v1.2.4",
+  "protocol": "agent-visor/1"
+}

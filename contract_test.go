@@ -57,7 +57,8 @@ func contractFixtures() []fixture {
 	req := Request{ID: "perm_1", Tool: "Bash", Kind: "permission", Question: "Run it?", Input: `{"command":"ls"}`}
 	return []fixture{
 		{"hello", Hello{Client: "example", Build: "v1.2.3", Protocol: Protocol, Binary: "/usr/local/bin/example"}},
-		{"info", Info{Build: "v1.2.3", Protocol: Protocol, Client: "example", Home: "/home/u/.example/visor", Seq: 42, PID: 4242}},
+		{"info", Info{Build: "v1.2.3", Protocol: Protocol, Client: "example", Home: "/home/u/.example/visor", Seq: 42, Upgrade: "v1.2.4", PID: 4242}},
+		{"upgrade_spec", UpgradeSpec{Binary: "/usr/local/bin/example", Build: "v1.2.4", Protocol: Protocol}},
 		{"error", errorBody{Error: errorInfo{Code: "not_found", Message: "session ses_1: agentvisor: not found"}}},
 		{"start_spec", StartSpec{
 			Harness: "claude", Model: "sonnet", Effort: "high", Binary: "/usr/local/bin/claude", WorkingDir: "/src/app", Prompt: "Fix the test.",
@@ -86,7 +87,7 @@ func contractFixtures() []fixture {
 			{Seq: 42, Session: "ses_1", At: at, Type: EventRequest, Request: &req},
 			{Seq: 43, Session: "ses_1", At: at, Type: EventRequestClosed, RequestID: "perm_1"},
 			{Seq: 44, Session: "ses_1", At: at, Type: EventResult, Turn: 1, Result: &Result{Subtype: "success", Text: "Done.", Usage: Usage{Input: 1200, Output: 300, Model: "sonnet"}}},
-			{Seq: 45, At: at, Type: EventRestarting},
+			{Seq: 45, At: at, Type: EventRestarting, Data: json.RawMessage(`{"build":"v1.2.4"}`)},
 		}},
 		{"hook_call", HookCall{
 			Harness: "claude", Session: "ses_1", At: at,

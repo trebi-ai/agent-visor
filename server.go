@@ -85,17 +85,43 @@ func Serve(ctx context.Context, v *Visor, socket string) error {
 	if err != nil {
 		return err
 	}
+	return ServeListener(ctx, v, ln)
+}
+
+// ServeListener serves v on ln until ctx ends. When an upgrade is ready, it
+// writes visor.restarting, stops the server, closes v, and runs the new
+// binary in this process. It returns only when that fails.
+func ServeListener(ctx context.Context, v *Visor, ln net.Listener) error {
 	srv := &http.Server{Handler: NewServer(v), ReadHeaderTimeout: 10 * time.Second}
-	stop := context.AfterFunc(ctx, func() {
+	unserve := v.serve()
+	done, shut, upgrading := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(shut)
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+		case <-v.restartCh:
+			v.announceRestart(ctx)
+			close(upgrading)
+		}
 		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(sctx) // the connections close in any case
-	})
-	defer stop()
-	if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("serve %s: %w", socket, err)
+	}()
+	err := srv.Serve(ln)
+	close(done)
+	<-shut
+	unserve()
+	if !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("serve %s: %w", ln.Addr(), err)
 	}
-	return nil
+	select {
+	case <-upgrading:
+		return v.restartForUpgrade(context.WithoutCancel(ctx))
+	default:
+		return nil
+	}
 }
 
 // Listen opens the Unix socket with mode 0600. It removes a stale socket file,
@@ -130,6 +156,7 @@ func (s *Server) serverRoutes() []route {
 	return []route{
 		{"GET /v1/info", s.info},
 		{"POST /v1/hello", s.hello},
+		{"POST /v1/upgrade", s.upgrade},
 	}
 }
 
@@ -144,6 +171,15 @@ func (s *Server) hello(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	info, err := s.v.Hello(r.Context(), h)
+	s.reply(w, http.StatusOK, info, err)
+}
+
+func (s *Server) upgrade(w http.ResponseWriter, r *http.Request) {
+	var spec UpgradeSpec
+	if !s.decode(w, r, &spec) {
+		return
+	}
+	info, err := s.v.Upgrade(r.Context(), spec)
 	s.reply(w, http.StatusOK, info, err)
 }
 

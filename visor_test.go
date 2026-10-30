@@ -22,6 +22,7 @@ import (
 type api interface {
 	Info(ctx context.Context) (Info, error)
 	Hello(ctx context.Context, h Hello) (Info, error)
+	Upgrade(ctx context.Context, spec UpgradeSpec) (Info, error)
 	Start(ctx context.Context, spec StartSpec) (Session, error)
 	Session(ctx context.Context, id string) (Session, error)
 	Sessions(ctx context.Context, f Filter) ([]Session, error)

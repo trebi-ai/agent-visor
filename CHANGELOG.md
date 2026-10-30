@@ -20,7 +20,7 @@
 - Set `Launch.Binary`, `Launch.Home`, and the harness env when a session starts. Emit `harness.changed` on each harness change.
 - Move `Limits` and `LimitWindow` to the `harness` package. The root types are aliases.
 - Add the `cli` package: `Command(Options)` gives the command tree, so a product mounts it under its own binary with its own home. It talks to the visor through the `cli.Visor` interface, and `Options.Dial` and `Options.Configure` let a product or a test replace the connection and the `serve` options.
-- Add the `agent-visor` binary with `serve`, `status`, `version`, `ls`, `project`, `workdir`, `session`, and `harness`, and the global flags `--home`, `--socket`, and `--json`. `upgrade` says "not available yet".
+- Add the `agent-visor` binary with `serve`, `status`, `version`, `ls`, `project`, `workdir`, `session`, and `harness`, and the global flags `--home`, `--socket`, and `--json`.
 - Add the `holder` package: `holder.Run` owns the PTY of one session, writes `sessions/<id>/pty.log` with mode 0600, keeps a ring for snapshots, and serves `holders/<id>.sock` with mode 0600. Its protocol is small and has a version in the hello.
 - Add the built-in `pty` backend. A session runs in a holder (`Options.HolderCommand`, default this program with `hold`) and survives a visor restart; `Recover` finds it again. A shell runs `$SHELL` or the spec command. An agent runs the harness program with `ExtraArgs`, or `Options.TerminalCommand`.
 - Add `Visor.Attach` and `AttachStream` (`Recv`, `Handle`, `Input`, `Close`), and the exported attach frames. Many clients attach, and one holds the size lease. A slow client gets a new snapshot. The chat view gives the turns of a wire session from the event log.
@@ -39,5 +39,11 @@
 - A harness with a driver in `Options.Drivers` runs its wire sessions in the visor process, as before.
 - The holder protocol is version 2. It adds the wire mode and the event, ack, call, and reply messages. `holder.Dial` takes a `holder.Cursor` and speaks to holders of version 1 and 2.
 - The store schema is version 2. An event keeps the holder run and sequence that it came from.
+- Add the quiet upgrade: `Visor.Upgrade`, `Client.Upgrade`, `UpgradeSpec`, and `POST /v1/upgrade`. A `Hello` with a `Binary` of a newer build also schedules it. `Info.Upgrade` gives the pending build. The visor waits until no session in a turn needs its process, no attach client is open, and no harness login, install, or update runs. A session in a holder does not stop the upgrade.
+- An upgrade waits `Options.UpgradeWait` (default 24 hours), or 10 minutes at most when the protocol major changes. Then a session in a turn that is not in a holder becomes `lost`, and its restart policy applies in the next visor.
+- Add `ServeListener`. `Serve` and the `serve` command use it. Only a visor that it serves upgrades. When an upgrade is ready, it writes `visor.restarting` with the new build in `data`, closes the socket, closes the visor, and runs the new binary with the same arguments and env (`Options.Exec`, default `syscall.Exec`). `Options.Now` sets the clock of the deadline.
+- `Start` gives `ErrBusy` while the visor restarts for an upgrade.
+- The `upgrade` command asks the running visor to upgrade to this binary. `status` shows a pending upgrade.
+- Add `harness.Manager.Busy`.
 - Fix: an answer that returns after the end of the turn no longer moves an idle session back to running.
 - Fix: a PTY session that ends while the holder has dropped the visor gets its last output from `pty.log`.

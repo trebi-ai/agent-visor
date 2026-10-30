@@ -952,6 +952,23 @@
       ],
       "type": "object"
     },
+    "UpgradeSpec": {
+      "properties": {
+        "binary": {
+          "type": "string"
+        },
+        "build": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "binary"
+      ],
+      "type": "object"
+    },
     "Usage": {
       "properties": {
         "cache_creation": {
@@ -1221,6 +1238,9 @@
     },
     "start_spec": {
       "$ref": "#/$defs/StartSpec"
+    },
+    "upgrade_spec": {
+      "$ref": "#/$defs/UpgradeSpec"
     },
     "workdir": {
       "$ref": "#/$defs/Workdir"

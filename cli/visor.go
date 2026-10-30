@@ -7,13 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
-	"net/http"
 	"os"
 	"os/signal"
 	"slices"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/urfave/cli/v3"
 
@@ -50,7 +48,7 @@ func (a *app) versionCommand() *cli.Command {
 }
 
 func (a *app) upgradeCommand() *cli.Command {
-	return &cli.Command{Name: "upgrade", Usage: "Replace the running visor with this build when no session needs it", Action: a.notAvailable}
+	return &cli.Command{Name: "upgrade", Usage: "Replace the running visor with this build when no session needs it", Action: a.upgrade}
 }
 
 func (a *app) hookCommand() *cli.Command {
@@ -112,19 +110,29 @@ func (a *app) serve(ctx context.Context, cmd *cli.Command) error {
 		_ = ln.Close() // the open error is the one to report
 		return err
 	}
-	srv := &http.Server{Handler: agentvisor.NewServer(v), ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		<-ctx.Done()
-		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(sctx) // the connections close in any case
-	}()
 	log.Info("the visor serves", "socket", sock, "home", home)
-	serr := srv.Serve(ln)
-	if errors.Is(serr, http.ErrServerClosed) {
-		serr = nil
-	}
+	serr := agentvisor.ServeListener(ctx, v, ln)
 	return errors.Join(serr, v.Close(context.WithoutCancel(ctx)))
+}
+
+// upgrade asks the running visor to replace itself with this binary.
+func (a *app) upgrade(ctx context.Context, cmd *cli.Command) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("upgrade: %w", err)
+	}
+	spec := agentvisor.UpgradeSpec{Binary: exe, Build: a.opts.Build, Protocol: agentvisor.Protocol}
+	return a.with(ctx, cmd, func(v Visor) error {
+		info, err := v.Upgrade(ctx, spec)
+		if err != nil {
+			return err
+		}
+		p := a.out(cmd)
+		if p.json {
+			return p.JSON(info)
+		}
+		return p.Line("the visor %s upgrades to %s when no session needs it", info.Build, cmp.Or(info.Upgrade, "this build"))
+	})
 }
 
 func (a *app) status(ctx context.Context, cmd *cli.Command) error {
@@ -166,6 +174,9 @@ func (a *app) status(ctx context.Context, cmd *cli.Command) error {
 	t.Row("socket", view.Socket)
 	t.Row("pid", fmt.Sprint(view.Info.PID))
 	t.Row("seq", fmt.Sprint(view.Info.Seq))
+	if view.Info.Upgrade != "" {
+		t.Row("upgrade", view.Info.Upgrade)
+	}
 	t.Row("sessions", strings.Join(counts, ", "))
 	return t.Flush()
 }

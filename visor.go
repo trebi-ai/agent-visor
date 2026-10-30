@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	agentwire "github.com/trebi-ai/agent-wire"
@@ -62,6 +63,17 @@ type Options struct {
 	// KeepExited is how long the visor keeps an exited session and its
 	// events. Zero keeps them for 7 days.
 	KeepExited time.Duration
+	// UpgradeWait is how long an upgrade waits for a quiet visor. Zero is
+	// 24 hours. A new protocol major waits 10 minutes at most.
+	UpgradeWait time.Duration
+	// Exec replaces the process with the upgrade binary. Nil is
+	// syscall.Exec.
+	Exec func(binary string, args, env []string) error
+	// Now is the clock of the upgrade deadline. Nil is time.Now.
+	Now func() time.Time
+
+	// upgradePoll is how often the visor checks a pending upgrade.
+	upgradePoll time.Duration
 }
 
 // Info describes a running visor.
@@ -94,6 +106,16 @@ type Visor struct {
 	sessions map[string]*record
 	hello    Hello
 	closed   bool
+	// quit closes when Close starts.
+	quit chan struct{}
+	// attached counts the open attach streams.
+	attached int
+	upgrade  *pendingUpgrade
+	// restartCh closes when the pending upgrade is ready.
+	restartCh  chan struct{}
+	restarting bool
+	// serving counts the ServeListener calls; only a served visor restarts.
+	serving int
 }
 
 // record is the visor state of one session.
@@ -136,20 +158,15 @@ func New(ctx context.Context, o Options) (*Visor, error) {
 	if err := os.MkdirAll(o.Home, 0o700); err != nil {
 		return nil, fmt.Errorf("open visor: %w", err)
 	}
-	if o.Logger == nil {
-		o.Logger = slog.Default()
-	}
-	if o.Build == "" {
-		o.Build = moduleBuild()
-	}
-	if o.KeepExited == 0 {
-		o.KeepExited = defaultKeepExited
-	}
+	o = o.withDefaults()
 	st, err := store.Open(ctx, filepath.Join(o.Home, "visor.db"))
 	if err != nil {
 		return nil, err
 	}
-	v := &Visor{opts: o, log: o.Logger.With("source", "visor"), st: st, sessions: map[string]*record{}, backends: map[Kind]Backend{}}
+	v := &Visor{
+		opts: o, log: o.Logger.With("source", "visor"), st: st, sessions: map[string]*record{}, backends: map[Kind]Backend{},
+		quit: make(chan struct{}), restartCh: make(chan struct{}),
+	}
 	v.ctx, v.cancel = context.WithCancel(context.WithoutCancel(ctx))
 	if v.events, err = newEventLog(ctx, st, o.Logger.With("source", "events")); err != nil {
 		_ = st.Close() // the event log error is the one to report
@@ -179,15 +196,47 @@ func New(ctx context.Context, o Options) (*Visor, error) {
 		_ = v.Close(ctx) // the boot error is the one to report
 		return nil, err
 	}
+	v.wg.Add(1)
+	go v.upgradeLoop()
 	return v, nil
+}
+
+// withDefaults fills the empty fields.
+func (o Options) withDefaults() Options {
+	if o.Logger == nil {
+		o.Logger = slog.Default()
+	}
+	if o.Build == "" {
+		o.Build = moduleBuild()
+	}
+	if o.KeepExited == 0 {
+		o.KeepExited = defaultKeepExited
+	}
+	if o.UpgradeWait == 0 {
+		o.UpgradeWait = defaultUpgradeWait
+	}
+	if o.Exec == nil {
+		o.Exec = syscall.Exec
+	}
+	if o.Now == nil {
+		o.Now = time.Now
+	}
+	if o.upgradePoll == 0 {
+		o.upgradePoll = defaultUpgradePoll
+	}
+	return o
 }
 
 // Info describes the visor.
 func (v *Visor) Info(context.Context) (Info, error) {
-	return Info{Build: v.opts.Build, Protocol: Protocol, Client: v.opts.Client, Home: v.opts.Home, Seq: v.events.head(), PID: os.Getpid()}, nil
+	return Info{
+		Build: v.opts.Build, Protocol: Protocol, Client: v.opts.Client, Home: v.opts.Home, Seq: v.events.head(),
+		Upgrade: v.upgradeBuild(), PID: os.Getpid(),
+	}, nil
 }
 
-// Hello records the product that connects and describes the visor.
+// Hello records the product that connects and describes the visor. When
+// h has a binary of a newer build, the visor upgrades to it.
 func (v *Visor) Hello(ctx context.Context, h Hello) (Info, error) {
 	if h.Protocol != "" && protocolMajor(h.Protocol) != protocolMajor(Protocol) {
 		v.log.Warn("a client speaks another protocol", "client", h.Client, "protocol", h.Protocol)
@@ -195,6 +244,12 @@ func (v *Visor) Hello(ctx context.Context, h Hello) (Info, error) {
 	v.mu.Lock()
 	v.hello = h
 	v.mu.Unlock()
+	if h.Binary != "" && newerBuild(h.Build, v.opts.Build) {
+		spec := UpgradeSpec{Binary: h.Binary, Build: h.Build, Protocol: h.Protocol}
+		if _, err := v.Upgrade(ctx, spec); err != nil {
+			v.log.Warn("upgrade to the build of a client", "client", h.Client, "build", h.Build, "err", err)
+		}
+	}
 	return v.Info(ctx)
 }
 
@@ -202,6 +257,9 @@ func (v *Visor) Hello(ctx context.Context, h Hello) (Info, error) {
 func (v *Visor) Start(ctx context.Context, spec StartSpec) (Session, error) {
 	if err := spec.Validate(); err != nil {
 		return Session{}, err
+	}
+	if v.isRestarting() {
+		return Session{}, fmt.Errorf("%w: the visor restarts for an upgrade", ErrBusy)
 	}
 	spec = spec.withDefaults()
 	b, ok := v.backends[spec.Kind]
@@ -423,6 +481,7 @@ func (v *Visor) Close(ctx context.Context) error {
 		return nil
 	}
 	v.closed = true
+	close(v.quit)
 	var handles []Handle
 	for _, rec := range v.sessions {
 		if rec.h == nil {
@@ -960,6 +1019,12 @@ func (v *Visor) caps(s Session) Caps {
 		return b.Caps(s.Harness)
 	}
 	return Caps{}
+}
+
+func (v *Visor) isRestarting() bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.restarting
 }
 
 func (v *Visor) isClosed() bool {

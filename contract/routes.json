@@ -1,6 +1,7 @@
 [
   "GET /v1/info",
   "POST /v1/hello",
+  "POST /v1/upgrade",
   "POST /v1/sessions",
   "GET /v1/sessions",
   "GET /v1/sessions/{id}",

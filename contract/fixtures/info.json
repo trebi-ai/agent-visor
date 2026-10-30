@@ -4,5 +4,6 @@
   "client": "example",
   "home": "/home/u/.example/visor",
   "seq": 42,
+  "upgrade": "v1.2.4",
   "pid": 4242
 }

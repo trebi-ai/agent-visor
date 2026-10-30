@@ -321,6 +321,9 @@ func (v *Visor) Attach(_ context.Context, id string, o AttachOptions) (*AttachSt
 	default:
 		return nil, fmt.Errorf("%w: view %q", ErrInvalid, view)
 	}
+	v.mu.Lock()
+	v.attached++
+	v.mu.Unlock()
 	return a, nil
 }
 
@@ -390,6 +393,9 @@ func (a *AttachStream) Close() error {
 	}
 	a.closed = true
 	a.mu.Unlock()
+	a.v.mu.Lock()
+	a.v.attached--
+	a.v.mu.Unlock()
 	a.signal()
 	if a.term != nil {
 		a.term.leave(a)

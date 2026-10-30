@@ -50,7 +50,8 @@ type Event struct {
 	ExitCode  *int    `json:"exit_code,omitempty"`
 	// Harness names the harness of a harness.changed event.
 	Harness string `json:"harness,omitempty"`
-	// Data is the payload of a hook event, or the output of a script.
+	// Data is the payload of a hook event, the output of a script, or the
+	// build of a restart.
 	Data json.RawMessage `json:"data,omitempty"`
 	// src is the holder run and sequence of an event from a wire holder.
 	src holder.Cursor

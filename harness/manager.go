@@ -456,6 +456,13 @@ func (m *Manager) SetLimits(ctx context.Context, name string, l Limits) {
 	}
 }
 
+// Busy reports that a login, an install, or an update runs.
+func (m *Manager) Busy() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.ops) > 0 || len(m.logins) > 0
+}
+
 // Close stops the logins and the release lookups.
 func (m *Manager) Close(ctx context.Context) error {
 	m.mu.Lock()

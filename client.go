@@ -72,6 +72,13 @@ func (c *Client) Hello(ctx context.Context, h Hello) (Info, error) {
 	return out, c.do(ctx, http.MethodPost, "/v1/hello", h, &out)
 }
 
+// Upgrade asks the visor to replace itself with spec.Binary when it is
+// quiet. See Visor.Upgrade.
+func (c *Client) Upgrade(ctx context.Context, spec UpgradeSpec) (Info, error) {
+	var out Info
+	return out, c.do(ctx, http.MethodPost, "/v1/upgrade", spec, &out)
+}
+
 // Start starts a session.
 func (c *Client) Start(ctx context.Context, spec StartSpec) (Session, error) {
 	var out Session

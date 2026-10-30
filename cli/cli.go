@@ -45,6 +45,7 @@ type Options struct {
 // *agentvisor.Visor satisfy it.
 type Visor interface {
 	Info(ctx context.Context) (agentvisor.Info, error)
+	Upgrade(ctx context.Context, spec agentvisor.UpgradeSpec) (agentvisor.Info, error)
 	Start(ctx context.Context, spec agentvisor.StartSpec) (agentvisor.Session, error)
 	Session(ctx context.Context, id string) (agentvisor.Session, error)
 	Sessions(ctx context.Context, f agentvisor.Filter) ([]agentvisor.Session, error)

@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"context"
-	"errors"
 	"flag"
 	"os"
 	"path/filepath"
@@ -23,6 +22,7 @@ type fakeVisor struct {
 	projects []agentvisor.Project
 	workdirs []agentvisor.Workdir
 	sessions []agentvisor.Session
+	upgrade  agentvisor.UpgradeSpec
 }
 
 // syncBuffer is a bytes.Buffer that two goroutines can use.
@@ -33,6 +33,11 @@ type syncBuffer struct {
 
 func (f *fakeVisor) Info(context.Context) (agentvisor.Info, error) {
 	return agentvisor.Info{Build: "test", Protocol: agentvisor.Protocol, Home: "/visor", Seq: 30, PID: 1}, nil
+}
+
+func (f *fakeVisor) Upgrade(_ context.Context, spec agentvisor.UpgradeSpec) (agentvisor.Info, error) {
+	f.upgrade = spec
+	return agentvisor.Info{Build: "test", Protocol: agentvisor.Protocol, Home: "/visor", Upgrade: spec.Build, PID: 1}, nil
 }
 
 func (f *fakeVisor) Start(context.Context, agentvisor.StartSpec) (agentvisor.Session, error) {
@@ -232,9 +237,24 @@ func TestMountUnderProduct(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), `"visor serve"`) {
 		t.Fatalf("status with no visor: %v", err)
 	}
-	err = root.Run(t.Context(), []string{"visor", "upgrade"})
-	if !errors.Is(err, errNotAvailable) || !strings.HasPrefix(err.Error(), "upgrade:") {
-		t.Fatalf("upgrade seam: %v", err)
+}
+
+func TestUpgradeCommand(t *testing.T) {
+	t.Parallel()
+	var out bytes.Buffer
+	f := newFakeVisor()
+	root := Command(Options{Name: "visor", Home: "/h", Build: "v2.0.0", Stdout: &out, Stderr: &out, Dial: func(context.Context, string) (Visor, error) {
+		return f, nil
+	}})
+	if err := root.Run(t.Context(), []string{"visor", "upgrade"}); err != nil {
+		t.Fatal(err)
+	}
+	exe, _ := os.Executable() //nolint:errcheck // an empty path fails the check below
+	if f.upgrade.Binary != exe || f.upgrade.Build != "v2.0.0" || f.upgrade.Protocol != agentvisor.Protocol {
+		t.Fatalf("upgrade spec: %+v", f.upgrade)
+	}
+	if !strings.Contains(out.String(), "upgrades to v2.0.0") {
+		t.Fatalf("output: %q", out.String())
 	}
 }
 
