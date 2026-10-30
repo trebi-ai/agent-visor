@@ -95,6 +95,7 @@ func contractFixtures() []fixture {
 		}},
 		{"handover", handoverRequest{To: KindPTY}},
 		{"screen", Screen{Cols: 80, Rows: 3, Lines: []string{"$ make test", "ok", "$"}, CursorRow: 2, CursorCol: 2}},
+		{"output", outputReply{Text: "$ make test\nok\n"}},
 		{"keys", keysRequest{Data: []byte("\x1b[B\r")}},
 		{"attach_client_frames", []ClientFrame{
 			{Type: ClientAttach, View: ViewTerminal, Cols: 120, Rows: 40},

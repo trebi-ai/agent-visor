@@ -25,6 +25,7 @@
   "POST /v1/sessions/{id}/handover",
   "GET /v1/sessions/{id}/screen",
   "POST /v1/sessions/{id}/keys",
+  "GET /v1/sessions/{id}/output",
   "GET /v1/harnesses",
   "GET /v1/harnesses/{name}",
   "POST /v1/harnesses/{name}/install",

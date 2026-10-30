@@ -16,7 +16,18 @@ func (s *Server) attachRoutes() []route {
 		{"POST /v1/sessions/{id}/handover", s.handover},
 		{"GET /v1/sessions/{id}/screen", s.screen},
 		{"POST /v1/sessions/{id}/keys", s.keys},
+		{"GET /v1/sessions/{id}/output", s.output},
 	}
+}
+
+// outputReply is the reply of an output call.
+type outputReply struct {
+	Text string `json:"text"`
+}
+
+func (s *Server) output(w http.ResponseWriter, r *http.Request) {
+	text, err := s.v.Output(r.Context(), r.PathValue("id"))
+	s.reply(w, http.StatusOK, outputReply{Text: text}, err)
 }
 
 // keysRequest is the body of a keys call. Data is base64 in JSON.

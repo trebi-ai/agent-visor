@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -60,9 +61,13 @@ type ptyHandle struct {
 	lease    *AttachStream
 	detached bool
 	ended    bool
-	// vt renders the output for Screen. answers holds its replies to
-	// terminal queries; they go to the PTY while no client holds the lease.
+	// vt renders the output for Screen. It is lazy: pending is the output
+	// that it did not read, and stale means that it must read the ring
+	// again. answers holds its replies to terminal queries; they go to the
+	// PTY while no client holds the lease.
 	vt      vt10x.Terminal
+	pending []byte
+	stale   bool
 	answers []byte
 	fresh   bool
 }
@@ -70,6 +75,9 @@ type ptyHandle struct {
 var (
 	_ Backend = (*ptyBackend)(nil)
 	_ Handle  = (*ptyHandle)(nil)
+
+	// dsrQuery is a status query that the emulator answers.
+	dsrQuery = regexp.MustCompile(`\x1b\[[0-9;?]*n`)
 )
 
 const (
@@ -205,6 +213,7 @@ func (b *ptyBackend) track(id, vendor string, c *holder.Client, fresh bool) *pty
 		h.pid, h.size = hello.ChildPID, holder.Size{Cols: hello.Cols, Rows: hello.Rows}
 	}
 	h.vt = h.newVT()
+	h.stale = true
 	b.mu.Lock()
 	b.handles[h] = struct{}{}
 	b.mu.Unlock()
@@ -493,9 +502,11 @@ func (h *ptyHandle) resnapshot(a *AttachStream) {
 // the new buffer.
 func (h *ptyHandle) snapshot(p []byte) {
 	h.mu.Lock()
-	h.ring = p
-	h.vt = h.newVT()
-	_, _ = h.vt.Write(p) // the emulator never fails a write
+	h.ring, h.pending, h.stale = p, nil, true
+	if h.fresh {
+		h.pending = bytes.Clone(p)
+		h.render(true)
+	}
 	for a := range h.subs {
 		a.markStale()
 	}
@@ -510,7 +521,13 @@ func (h *ptyHandle) output(p []byte) {
 	if over := len(h.ring) - holder.DefaultRing; over > 0 {
 		h.ring = append(h.ring[:0:0], h.ring[over:]...)
 	}
-	_, _ = h.vt.Write(p) // the emulator never fails a write
+	if len(h.pending)+len(p) > holder.DefaultRing {
+		h.pending, h.stale = nil, true
+	}
+	h.pending = append(h.pending, p...)
+	if dsrQuery.Match(h.pending[max(0, len(h.pending)-len(p)-16):]) {
+		h.render(true)
+	}
 	for a := range h.subs {
 		a.output(p)
 	}
@@ -534,6 +551,30 @@ func (h *ptyHandle) answer(send bool) {
 	}
 }
 
+// tail gives a copy of the output ring.
+func (h *ptyHandle) tail() []byte {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return bytes.Clone(h.ring)
+}
+
+// render brings the emulator up to date. The caller holds h.mu. With keep
+// false, or for the output before pending, the replies are dropped, because
+// the program asked them before.
+func (h *ptyHandle) render(keep bool) {
+	if h.stale {
+		h.vt = h.newVT()
+		old := h.ring[:max(0, len(h.ring)-len(h.pending))]
+		_, _ = h.vt.Write(old) // the emulator never fails a write
+		h.answers, h.stale = nil, false
+	}
+	_, _ = h.vt.Write(h.pending) // the emulator never fails a write
+	h.pending = nil
+	if !keep {
+		h.answers = nil
+	}
+}
+
 // newVT gives an emulator of the PTY size. The caller holds h.mu, or owns h.
 func (h *ptyHandle) newVT() vt10x.Terminal {
 	return vt10x.New(vt10x.WithSize(cmp.Or(h.size.Cols, defaultCols), cmp.Or(h.size.Rows, defaultRows)), vt10x.WithWriter(answerWriter{h}))
@@ -543,6 +584,7 @@ func (h *ptyHandle) newVT() vt10x.Terminal {
 func (h *ptyHandle) screen() Screen {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.render(false)
 	h.vt.Lock()
 	defer h.vt.Unlock()
 	cols, rows := h.vt.Size()
@@ -563,6 +605,7 @@ func (h *ptyHandle) resized(s holder.Size) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.size = s
+	h.render(false)
 	h.vt.Resize(cmp.Or(s.Cols, defaultCols), cmp.Or(s.Rows, defaultRows))
 	for a := range h.subs {
 		a.push(Frame{Type: FrameResized, Cols: s.Cols, Rows: s.Rows})
@@ -576,6 +619,65 @@ func (h *ptyHandle) endAll(reason EndReason) {
 	for a := range h.subs {
 		a.end(reason)
 	}
+}
+
+// plainText removes the escape sequences and the control characters of
+// terminal output. A carriage return starts a new line, and a cursor move to
+// the right is one space, so that words stay apart.
+func plainText(p []byte) string {
+	var b strings.Builder
+	b.Grow(len(p))
+	for i := 0; i < len(p); i++ {
+		switch c := p[i]; {
+		case c == 0x1b:
+			i = skipEscape(p, i, &b)
+		case c == '\r':
+			if i+1 >= len(p) || p[i+1] != '\n' {
+				b.WriteByte('\n')
+			}
+		case c == '\n' || c == '\t' || c >= 0x20 && c != 0x7f:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+// skipEscape gives the index of the last byte of the escape sequence at
+// p[i]. A cursor move to the right writes one space to b.
+func skipEscape(p []byte, i int, b *strings.Builder) int {
+	if i+1 >= len(p) {
+		return i
+	}
+	j := i + 2
+	switch {
+	case p[i+1] == '[':
+		for j < len(p) && (p[j] < 0x40 || p[j] > 0x7e) {
+			j++
+		}
+		if j < len(p) && p[j] == 'C' {
+			b.WriteByte(' ')
+		}
+		return j
+	case p[i+1] == ']':
+		return oscEnd(p, j)
+	case strings.IndexByte("()*+", p[i+1]) >= 0:
+		return i + 2 // a charset select has one more byte
+	}
+	return i + 1
+}
+
+// oscEnd gives the index of the last byte of the OSC string that starts at
+// p[j]. BEL or ESC \\ ends it.
+func oscEnd(p []byte, j int) int {
+	for ; j < len(p); j++ {
+		if p[j] == 0x07 {
+			return j
+		}
+		if p[j] == 0x1b && j+1 < len(p) && p[j+1] == '\\' {
+			return j + 1
+		}
+	}
+	return j
 }
 
 // answerWriter keeps the replies of the emulator. The emulator writes while

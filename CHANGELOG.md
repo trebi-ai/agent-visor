@@ -49,3 +49,5 @@
 - Fix: a PTY session that ends while the holder has dropped the visor gets its last output from `pty.log`.
 - Add `Visor.Screen`, `Client.Screen`, `Visor.Keys`, and `Client.Keys`, with the routes `GET /v1/sessions/{id}/screen` and `POST /v1/sessions/{id}/keys`. A terminal emulator in the visor renders the PTY output as text. While no client holds the size lease, the emulator answers the terminal queries of the program, for example the cursor position.
 - Add the CLI command `session screen`.
+- Add `Visor.Output` and `Client.Output`, with the route `GET /v1/sessions/{id}/output`: the recent output of a PTY session as plain text, also after the session ends.
+- The terminal emulator reads the output only when a client asks for the screen, or when the program asks a status query.

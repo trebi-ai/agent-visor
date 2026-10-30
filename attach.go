@@ -356,6 +356,30 @@ func (v *Visor) Keys(_ context.Context, id string, data []byte) error {
 	return ph.write(data)
 }
 
+// Output gives the end of the terminal output of a session as plain text,
+// one ring long. It also works after the session ends.
+func (v *Visor) Output(_ context.Context, id string) (string, error) {
+	rec, h, err := v.lookup(id)
+	if err != nil {
+		return "", err
+	}
+	if ph, ok := h.(*ptyHandle); ok {
+		return plainText(ph.tail()), nil
+	}
+	v.mu.Lock()
+	kind := rec.s.Kind
+	v.mu.Unlock()
+	pb, ok := v.backends[KindPTY].(*ptyBackend)
+	if kind != KindPTY || h != nil || !ok {
+		return "", fmt.Errorf("%w: session %s has no terminal", ErrUnsupported, id)
+	}
+	raw, err := pb.logTail(id)
+	if err != nil {
+		return "", fmt.Errorf("read the output of %s: %w", id, err)
+	}
+	return plainText(raw), nil
+}
+
 // terminal gives the PTY of a live session.
 func (v *Visor) terminal(id string) (*ptyHandle, error) {
 	_, h, err := v.lookup(id)

@@ -1185,6 +1185,17 @@
       ],
       "type": "object"
     },
+    "outputReply": {
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    },
     "sendReply": {
       "properties": {
         "delivery": {
@@ -1273,6 +1284,9 @@
     },
     "login": {
       "$ref": "#/$defs/Login"
+    },
+    "output": {
+      "$ref": "#/$defs/outputReply"
     },
     "project": {
       "$ref": "#/$defs/Project"

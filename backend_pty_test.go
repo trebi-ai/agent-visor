@@ -212,6 +212,17 @@ func TestPTYScreenAndKeys(t *testing.T) {
 	if sc.Cols != 80 || sc.Rows != 24 || len(sc.Lines) != 24 {
 		t.Fatalf("screen size %dx%d with %d lines", sc.Cols, sc.Rows, len(sc.Lines))
 	}
+	out, err := v.Output(t.Context(), s.ID)
+	if err != nil || !strings.Contains(out, "echo:hello\n") || strings.Contains(out, "\x1b") {
+		t.Fatalf("Output = %q, %v", out, err)
+	}
+	if err := v.Stop(t.Context(), s.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, v, s.ID, StateExited)
+	if out, err := v.Output(t.Context(), s.ID); err != nil || !strings.Contains(out, "echo:hello") {
+		t.Fatalf("Output after the exit = %q, %v", out, err)
+	}
 	if _, err := v.Screen(t.Context(), "nope"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Screen of a missing session: %v", err)
 	}
@@ -277,6 +288,22 @@ func TestPTYCommand(t *testing.T) {
 		argv, err := b.command(tc.l, env)
 		if !errors.Is(err, tc.err) || strings.Join(argv, " ") != tc.want {
 			t.Errorf("%s: %q %v", name, argv, err)
+		}
+	}
+}
+
+func TestPlainText(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		"a\x1b[1;32mb\x1b[0mc":       "abc",
+		"one\r\ntwo\rthree":          "one\ntwo\nthree",
+		"x\x1b[2Cy":                  "x y",
+		"\x1b]0;title\x07after":      "after",
+		"\x1b]8;;http://e\x1b\\link": "link",
+		"\x1b(Bok\x00\x7f":           "ok",
+	} {
+		if got := plainText([]byte(in)); got != want {
+			t.Errorf("plainText(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

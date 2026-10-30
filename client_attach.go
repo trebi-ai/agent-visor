@@ -86,6 +86,13 @@ func (c *Client) Keys(ctx context.Context, id string, data []byte) error {
 	return c.do(ctx, http.MethodPost, "/v1/sessions/"+url.PathEscape(id)+"/keys", keysRequest{Data: data}, nil)
 }
 
+// Output gives the end of the terminal output of a session as plain text.
+func (c *Client) Output(ctx context.Context, id string) (string, error) {
+	var out outputReply
+	err := c.do(ctx, http.MethodGet, "/v1/sessions/"+url.PathEscape(id)+"/output", nil, &out)
+	return out.Text, err
+}
+
 // Handover moves a session between the wire and the pty backend.
 func (c *Client) Handover(ctx context.Context, id string, to Kind) error {
 	return c.do(ctx, http.MethodPost, "/v1/sessions/"+url.PathEscape(id)+"/handover", handoverRequest{To: to}, nil)
