@@ -29,6 +29,30 @@ stream, err := c.Events(ctx, agentvisor.Filter{Session: s.ID}, 0)
 
 The generic CLI `agent-visor` uses the same API.
 
+## CLI
+
+`agent-visor` runs the visor and drives it. The default home is `~/.agent-visor`; `AGENT_VISOR_HOME` and `--home` change it. The socket is `<home>/visor.sock` unless `--socket` gives another path. `--json` prints JSON.
+
+```bash
+agent-visor serve &                      # run the visor in the foreground
+agent-visor status
+agent-visor ls                           # projects, workdirs, and sessions as a tree
+agent-visor session start --harness claude --dir . --prompt "Fix the tests" --label app.task=t1
+agent-visor session logs <id> --follow   # seq, type, and a short text for each event
+agent-visor session answer <id> <request-id> --allow
+agent-visor session stop <id>
+agent-visor harness ls
+```
+
+A product mounts the same command tree under its own binary, with its own home and socket:
+
+```go
+root.Commands = append(root.Commands, cli.Command(cli.Options{
+	Name: "visor", Home: home, Build: version,
+	Configure: func(ctx context.Context, o *agentvisor.Options) error { o.Env = env; return nil },
+}))
+```
+
 ## Platforms
 
 macOS and Linux. Windows is a later step.

@@ -1,0 +1,5 @@
+ID     STATE    ROLE   KIND  HARNESS  MODEL  TURNS  WORKDIR   TITLE
+ses_a  idle     agent  wire  claude   opus   3      wd_main   Fix the flaky test
+ses_b  waiting  agent  wire  codex    -      1      wd_feat   -
+ses_c  running  shell  pty   -        -      0      wd_main   -
+ses_d  exited   agent  wire  claude   -      2      wd_notes  -

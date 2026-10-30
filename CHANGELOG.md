@@ -19,3 +19,5 @@
 - Keep the harness env in `harness/<harness>.env.json` with mode 0600. A session gets the env layers visor, harness, and session. The API returns only the env keys.
 - Set `Launch.Binary`, `Launch.Home`, and the harness env when a session starts. Emit `harness.changed` on each harness change.
 - Move `Limits` and `LimitWindow` to the `harness` package. The root types are aliases.
+- Add the `cli` package: `Command(Options)` gives the command tree, so a product mounts it under its own binary with its own home. It talks to the visor through the `cli.Visor` interface, and `Options.Dial` and `Options.Configure` let a product or a test replace the connection and the `serve` options.
+- Add the `agent-visor` binary with `serve`, `status`, `version`, `ls`, `project`, `workdir`, `session`, and `harness`, and the global flags `--home`, `--socket`, and `--json`. `upgrade`, `hook`, `hold`, `session shell`, `session attach`, and `session handover` say "not available yet". The `harness` commands work on a visor connection that has the harness methods; they say "not available yet" on a `Client` without them.

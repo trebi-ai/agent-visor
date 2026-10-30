@@ -1,0 +1,8 @@
+id       prj_notes
+name     notes
+path     /src/notes
+git      false
+created  2026-01-02T03:04:05Z
+
+ID        PROJECT    KIND    STATE   BRANCH  KEY  PORT   PATH
+wd_notes  prj_notes  folder  active  -       -    41030  /src/notes

@@ -1,0 +1,21 @@
+id         ses_b
+state      waiting
+role       agent
+kind       wire
+title      -
+harness    codex
+model      -
+project    prj_app
+workdir    wd_feat
+dir        /visor/worktrees/app/feat
+vendor id  -
+pid        0
+turns      1
+seq        20
+restart    -
+labels     -
+env keys   -
+error      -
+created    2026-01-02T03:04:05Z
+updated    2026-01-02T03:04:05Z
+pending    p1 Bash Run it?

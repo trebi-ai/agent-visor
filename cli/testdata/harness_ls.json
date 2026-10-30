@@ -1,0 +1,41 @@
+[
+  {
+    "name": "claude",
+    "installed": true,
+    "version": "2.1.0",
+    "latest": "2.2.0",
+    "path": "/visor/bin/claude/current/claude",
+    "source": "visor",
+    "installs": [
+      "2.0.0",
+      "2.1.0"
+    ],
+    "installable": true,
+    "supported": true,
+    "auth_mode": "separate",
+    "auth": "ok",
+    "env_keys": [
+      "API_TOKEN"
+    ]
+  },
+  {
+    "name": "codex",
+    "installed": true,
+    "version": "0.9.0",
+    "path": "/usr/local/bin/codex",
+    "source": "system",
+    "installable": true,
+    "supported": true,
+    "auth_mode": "shared",
+    "auth": "missing"
+  },
+  {
+    "name": "gemini",
+    "installed": false,
+    "installable": true,
+    "supported": false,
+    "detail": "not installed",
+    "auth_mode": "shared",
+    "auth": "unknown"
+  }
+]

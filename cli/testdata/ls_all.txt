@@ -1,0 +1,11 @@
+ID          STATE     KIND      NAME    DETAIL
+prj_app     -         git       app     /src/app
+  wd_main   active    main      main    /src/app
+    ses_a   idle      agent     claude  Fix the flaky test
+    ses_c   running   shell     -       -
+  wd_feat   active    worktree  feat-x  /visor/worktrees/app/feat
+    ses_b   waiting   agent     codex   -
+  wd_old    archived  worktree  old     /visor/worktrees/app/old
+prj_notes   -         folder    notes   /src/notes
+  wd_notes  active    folder    -       /src/notes
+    ses_d   exited    agent     claude  -

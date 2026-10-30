@@ -1,0 +1,13 @@
+name         claude
+installed    true
+version      2.1.0
+latest       2.2.0
+path         /visor/bin/claude/current/claude
+source       visor
+installs     2.0.0 2.1.0
+installable  true
+supported    true
+detail       -
+auth mode    separate
+auth         ok
+env keys     API_TOKEN

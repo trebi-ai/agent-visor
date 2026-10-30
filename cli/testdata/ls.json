@@ -1,0 +1,119 @@
+[
+  {
+    "id": "prj_app",
+    "name": "app",
+    "path": "/src/app",
+    "git": true,
+    "created_at": "2026-01-02T03:04:05Z",
+    "workdirs": [
+      {
+        "id": "wd_main",
+        "project": "prj_app",
+        "kind": "main",
+        "path": "/src/app",
+        "branch": "main",
+        "state": "active",
+        "port_base": 41000,
+        "created_at": "2026-01-02T03:04:05Z",
+        "updated_at": "2026-01-02T03:04:05Z",
+        "sessions": [
+          {
+            "id": "ses_a",
+            "project": "prj_app",
+            "workdir": "wd_main",
+            "kind": "wire",
+            "role": "agent",
+            "title": "Fix the flaky test",
+            "harness": "claude",
+            "model": "opus",
+            "working_dir": "/src/app",
+            "state": "idle",
+            "vendor_id": "v-a",
+            "labels": {
+              "app.run": "r1"
+            },
+            "restart": {},
+            "env_keys": [
+              "API_TOKEN"
+            ],
+            "seq": 12,
+            "turns": 3,
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-01-02T03:04:05Z"
+          },
+          {
+            "id": "ses_c",
+            "project": "prj_app",
+            "workdir": "wd_main",
+            "kind": "pty",
+            "role": "shell",
+            "working_dir": "/src/app",
+            "state": "running",
+            "pid": 4242,
+            "restart": {},
+            "seq": 21,
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-01-02T03:04:05Z"
+          }
+        ]
+      },
+      {
+        "id": "wd_feat",
+        "project": "prj_app",
+        "key": "feat",
+        "kind": "worktree",
+        "path": "/visor/worktrees/app/feat",
+        "branch": "feat-x",
+        "base": "main",
+        "state": "active",
+        "port_base": 41010,
+        "created_at": "2026-01-02T03:04:05Z",
+        "updated_at": "2026-01-02T03:04:05Z",
+        "sessions": [
+          {
+            "id": "ses_b",
+            "project": "prj_app",
+            "workdir": "wd_feat",
+            "kind": "wire",
+            "role": "agent",
+            "harness": "codex",
+            "working_dir": "/visor/worktrees/app/feat",
+            "state": "waiting",
+            "pending": [
+              {
+                "id": "p1",
+                "tool": "Bash",
+                "question": "Run it?"
+              }
+            ],
+            "restart": {},
+            "seq": 20,
+            "turns": 1,
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-01-02T03:04:05Z"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "prj_notes",
+    "name": "notes",
+    "path": "/src/notes",
+    "git": false,
+    "created_at": "2026-01-02T03:04:05Z",
+    "workdirs": [
+      {
+        "id": "wd_notes",
+        "project": "prj_notes",
+        "kind": "folder",
+        "path": "/src/notes",
+        "state": "active",
+        "port_base": 41030,
+        "created_at": "2026-01-02T03:04:05Z",
+        "updated_at": "2026-01-02T03:04:05Z",
+        "sessions": []
+      }
+    ]
+  }
+]

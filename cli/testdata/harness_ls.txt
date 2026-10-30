@@ -1,0 +1,4 @@
+NAME    VERSION  LATEST  SOURCE  SUPPORTED  AUTH MODE  AUTH     DETAIL
+claude  2.1.0    2.2.0   visor   true       separate   ok       -
+codex   0.9.0    -       system  true       shared     missing  -
+gemini  -        -       -       false      shared     unknown  not installed

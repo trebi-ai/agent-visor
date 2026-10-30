@@ -1,0 +1,5 @@
+ID        PROJECT    KIND      STATE     BRANCH  KEY   PORT   PATH
+wd_main   prj_app    main      active    main    -     41000  /src/app
+wd_feat   prj_app    worktree  active    feat-x  feat  41010  /visor/worktrees/app/feat
+wd_old    prj_app    worktree  archived  old     old   41020  /visor/worktrees/app/old
+wd_notes  prj_notes  folder    active    -       -     41030  /src/notes
