@@ -456,9 +456,13 @@ func locate(ctx context.Context, dir string) (place, error) {
 	if err != nil {
 		return place{project: dir, top: dir}, nil //nolint:nilerr // a plain folder is not an error
 	}
-	common, err := git(ctx, dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	// git before 2.31 has no --path-format, and gives a path relative to dir.
+	common, err := git(ctx, dir, "rev-parse", "--git-common-dir")
 	if err != nil {
 		return place{}, err
+	}
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(dir, common)
 	}
 	main := top
 	if filepath.Base(common) == ".git" {
