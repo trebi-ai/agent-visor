@@ -1,0 +1,99 @@
+# yaml-language-server: $schema=https://golangci-lint.run/jsonschema/golangci.jsonschema.json
+# Standard rules, plus the HTTP and error checks for the socket client.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - staticcheck
+    - revive
+    - errcheck
+    - unused
+    - ineffassign
+    - govet
+    - dupl
+    - funlen
+    - gocyclo
+    - decorder
+    - funcorder
+    - gochecknoglobals
+    - gochecknoinits
+    - unconvert
+    - misspell
+    - bodyclose
+    - errorlint
+    - noctx
+
+  settings:
+    funcorder:
+      constructor: true
+      struct-method: true
+      alphabetical: false
+      function: true
+    decorder:
+      dec-order:
+        - type
+        - const
+        - var
+        - func
+    dupl:
+      threshold: 100
+    funlen:
+      lines: 80
+      statements: 60
+    gocyclo:
+      min-complexity: 15
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: var-naming
+        - name: error-return
+        - name: context-as-argument
+        - name: unexported-return
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - funlen
+          - gocyclo
+          - dupl
+          - gochecknoglobals
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/trebi-ai
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: true
+
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true

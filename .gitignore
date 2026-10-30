@@ -1,0 +1,19 @@
+# Build output
+/agent-visor
+/build/
+*.exe
+*.test
+*.dll
+*.so
+*.dylib
+
+# Coverage
+coverage.out
+coverage.txt
+coverage.html
+*.coverprofile
+
+# Editor and OS
+.DS_Store
+.idea/
+.vscode/

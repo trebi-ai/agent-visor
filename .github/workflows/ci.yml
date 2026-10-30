@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOFLAGS: -mod=readonly
+
+jobs:
+  test:
+    name: test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux, os: [self-hosted, Linux, X64] }
+          - { name: macos, os: [self-hosted, macOS, ARM64] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          # The self-hosted runners keep the module cache on disk; uploading
+          # it as an Actions cache takes longer than the build.
+          cache: false
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race ./...
+
+  lint:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.14
+          args: ./...
