@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -297,6 +298,25 @@ func (b *ptyBackend) readExit(id string) int {
 	return e.Code
 }
 
+// logTail gives the end of the output log of a session, one ring long.
+func (b *ptyBackend) logTail(id string) ([]byte, error) {
+	f, err := os.Open(filepath.Join(b.home, "sessions", id, "pty.log"))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	off := max(0, st.Size()-holder.DefaultRing)
+	buf := make([]byte, st.Size()-off)
+	if _, err := f.ReadAt(buf, off); err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	return buf, nil
+}
+
 // holderLog gives the end of the log of a holder, for an error.
 func (b *ptyBackend) holderLog(id string) string {
 	data, err := os.ReadFile(filepath.Join(b.home, "sessions", id, "holder.log"))
@@ -375,6 +395,10 @@ func (h *ptyHandle) pump() {
 	if h.isDetached() {
 		h.endAll(EndClosed)
 		return
+	}
+	// The holder ended while the visor was away, so the log has the last output.
+	if tail, err := h.b.logTail(h.id); err == nil {
+		h.snapshot(tail)
 	}
 	var code *int
 	if c := h.b.readExit(h.id); c >= 0 {

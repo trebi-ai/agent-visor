@@ -123,7 +123,7 @@ func TestPTYSlowClientGetsSnapshot(t *testing.T) {
 	}
 	waitState(t, v, s.ID, StateExited)
 	snapshots, total := 0, 0
-	var last []byte
+	var last, tail []byte
 	for {
 		f, err := a.Recv(t.Context())
 		if errors.Is(err, io.EOF) {
@@ -132,14 +132,18 @@ func TestPTYSlowClientGetsSnapshot(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if f.Op == OpSnapshot {
+		switch {
+		case f.Op == OpSnapshot:
 			snapshots++
-			last = f.Data
+			last, tail = f.Data, nil
+		case snapshots > 0:
+			tail = append(tail, f.Data...)
 		}
 		total += len(f.Data)
 	}
-	if snapshots < 2 || len(last) > holder.DefaultRing || !bytes.Contains(last, []byte("flood-end")) {
-		t.Fatalf("snapshots %d, last %d bytes, total %d", snapshots, len(last), total)
+	// Output after the last snapshot continues it.
+	if snapshots < 2 || len(last) > holder.DefaultRing || !bytes.Contains(append(last, tail...), []byte("flood-end")) {
+		t.Fatalf("snapshots %d, last %d bytes, tail %d bytes, total %d", snapshots, len(last), len(tail), total)
 	}
 	if total > 2*maxBuffered {
 		t.Fatalf("the slow client got %d bytes", total)

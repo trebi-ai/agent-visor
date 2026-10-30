@@ -34,3 +34,5 @@
 - Mark the user event that the visor writes for a send or a first prompt with `input: true`. A vendor echo has no mark.
 - Add `StartSpec.Binary`: the harness program. It wins over the visor install in `Launch.Binary`.
 - The wire backend writes the agent-wire frame log to `sessions/<id>/frames.ndjson` with mode 0600.
+- Fix: an answer that returns after the end of the turn no longer moves an idle session back to running.
+- Fix: a PTY session that ends while the holder has dropped the visor gets its last output from `pty.log`.

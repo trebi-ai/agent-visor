@@ -596,13 +596,8 @@ func (v *Visor) launch(ctx context.Context, rec *record, b Backend, spec StartSp
 
 // moveIf moves the state only when the session is still in from.
 func (v *Visor) moveIf(ctx context.Context, rec *record, from, to State) {
-	v.mu.Lock()
-	ok := rec.s.State == from
-	v.mu.Unlock()
-	if ok {
-		if err := v.setState(ctx, rec, to); err != nil {
-			v.log.Debug("ignore a state move", "session_id", rec.s.ID, "err", err)
-		}
+	if err := v.move(ctx, rec, from, to); err != nil {
+		v.log.Debug("ignore a state move", "session_id", rec.s.ID, "err", err)
 	}
 }
 
@@ -719,17 +714,21 @@ func (v *Visor) closeRequest(ctx context.Context, rec *record, requestID string)
 	v.mu.Lock()
 	pending := len(rec.s.Pending)
 	v.mu.Unlock()
+	// The turn can end before the answer returns, so move only from waiting.
 	if pending == 0 {
-		if err := v.setState(ctx, rec, StateRunning); err != nil {
-			v.log.Debug("ignore a state move", "session_id", rec.s.ID, "err", err)
-		}
+		v.moveIf(ctx, rec, StateWaiting, StateRunning)
 	}
 }
 
 // setState moves the state, saves the session, and emits session.state.
 func (v *Visor) setState(ctx context.Context, rec *record, to State) error {
+	return v.move(ctx, rec, "", to)
+}
+
+// move is setState with a guard: an empty from allows each state.
+func (v *Visor) move(ctx context.Context, rec *record, from, to State) error {
 	v.mu.Lock()
-	if rec.s.State == to {
+	if rec.s.State == to || (from != "" && rec.s.State != from) {
 		v.mu.Unlock()
 		return nil
 	}

@@ -19,12 +19,15 @@ const kindCapture Kind = "capture"
 type captureBackend struct {
 	mu       sync.Mutex
 	launches []Launch
+	handles  []*captureHandle
+	onAnswer func(*captureHandle)
 }
 
 type captureHandle struct {
-	id   string
-	ch   chan Event
-	once sync.Once
+	id       string
+	ch       chan Event
+	once     sync.Once
+	onAnswer func(*captureHandle)
 }
 
 func (b *captureBackend) Kind() Kind { return kindCapture }
@@ -33,9 +36,11 @@ func (b *captureBackend) Caps(string) Caps { return Caps{} }
 
 func (b *captureBackend) Start(_ context.Context, l Launch) (Handle, error) {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.launches = append(b.launches, l)
-	b.mu.Unlock()
-	return &captureHandle{id: l.Session.ID, ch: make(chan Event)}, nil
+	h := &captureHandle{id: l.Session.ID, ch: make(chan Event), onAnswer: b.onAnswer}
+	b.handles = append(b.handles, h)
+	return h, nil
 }
 
 func (b *captureBackend) Recover(context.Context) ([]Handle, error) { return nil, nil }
@@ -53,8 +58,13 @@ func (h *captureHandle) VendorID() string                              { return 
 func (h *captureHandle) PID() int                                      { return 0 }
 func (h *captureHandle) Send(context.Context, Input) (Delivery, error) { return DeliveryPrompted, nil }
 func (h *captureHandle) Interrupt(context.Context) error               { return nil }
-func (h *captureHandle) Answer(context.Context, string, Answer) error  { return nil }
-func (h *captureHandle) Events() <-chan Event                          { return h.ch }
+func (h *captureHandle) Answer(context.Context, string, Answer) error {
+	if h.onAnswer != nil {
+		h.onAnswer(h)
+	}
+	return nil
+}
+func (h *captureHandle) Events() <-chan Event { return h.ch }
 
 func (h *captureHandle) Close(context.Context) error {
 	h.once.Do(func() { close(h.ch) })
@@ -165,5 +175,35 @@ func TestHarnessLaunchLayers(t *testing.T) {
 	}
 	if changes < 2 {
 		t.Fatalf("harness.changed events: %d", changes)
+	}
+}
+
+// TestAnswerAfterTurnEnd checks that a turn that ends before Answer returns stays idle.
+func TestAnswerAfterTurnEnd(t *testing.T) {
+	t.Parallel()
+	b := &captureBackend{}
+	v, err := New(t.Context(), Options{Home: t.TempDir(), Backends: []Backend{b}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close(context.Background())
+	s, err := v.Start(t.Context(), StartSpec{Kind: kindCapture, WorkingDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.mu.Lock()
+	h := b.handles[0]
+	b.mu.Unlock()
+	h.ch <- Event{Type: EventRequest, Request: &Request{ID: "p1"}}
+	waitState(t, v, s.ID, StateWaiting)
+	h.onAnswer = func(h *captureHandle) {
+		h.ch <- Event{Type: EventResult, Result: &Result{Subtype: "success"}}
+		waitState(t, v, s.ID, StateIdle)
+	}
+	if err := v.Answer(t.Context(), s.ID, "p1", Answer{Allow: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := v.Session(t.Context(), s.ID); got.State != StateIdle { //nolint:errcheck // the state check covers it
+		t.Fatalf("state after the answer: %s", got.State)
 	}
 }
