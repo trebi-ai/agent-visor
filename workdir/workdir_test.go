@@ -215,7 +215,9 @@ func newRepo(t *testing.T, files map[string]string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	run(t, dir, "git", "init", "-q", "-b", "main")
+	// git 2.25 has no init -b.
+	run(t, dir, "git", "init", "-q")
+	run(t, dir, "git", "symbolic-ref", "HEAD", "refs/heads/main")
 	if err := os.MkdirAll(filepath.Join(dir, "sub", "deep"), 0o750); err != nil {
 		t.Fatal(err)
 	}
