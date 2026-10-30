@@ -1,0 +1,11 @@
+{
+  "harness": "claude",
+  "session": "ses_1",
+  "payload": {
+    "session_id": "v-1",
+    "cwd": "/src/app",
+    "hook_event_name": "Stop",
+    "last_assistant_message": "Done."
+  },
+  "at": "2026-10-30T12:00:00Z"
+}

@@ -53,7 +53,13 @@ func (a *app) upgradeCommand() *cli.Command {
 }
 
 func (a *app) hookCommand() *cli.Command {
-	return &cli.Command{Name: "hook", Usage: "Send a hook call of a session to the visor", Action: a.notAvailable}
+	return &cli.Command{
+		Name: "hook", Usage: "Send a hook call of a session to the visor (an agent CLI runs it)", ArgsUsage: "<harness>",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "session", Usage: "the session of the visor that runs the agent", Sources: cli.EnvVars(agentvisor.EnvSession)},
+		},
+		Action: a.hook,
+	}
 }
 
 func (a *app) holdCommand() *cli.Command {

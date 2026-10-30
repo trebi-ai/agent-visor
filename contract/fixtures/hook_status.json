@@ -1,0 +1,14 @@
+[
+  {
+    "harness": "claude",
+    "auth": "shared",
+    "dir": "/home/u/.claude",
+    "state": "installed"
+  },
+  {
+    "harness": "codex",
+    "auth": "shared",
+    "dir": "/home/u/.codex",
+    "state": "untrusted"
+  }
+]

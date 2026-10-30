@@ -86,13 +86,22 @@ func contractFixtures() []fixture {
 			{Seq: 44, Session: "ses_1", At: at, Type: EventResult, Turn: 1, Result: &Result{Subtype: "success", Text: "Done.", Usage: Usage{Input: 1200, Output: 300, Model: "sonnet"}}},
 			{Seq: 45, At: at, Type: EventRestarting},
 		}},
+		{"hook_call", HookCall{
+			Harness: "claude", Session: "ses_1", At: at,
+			Payload: json.RawMessage(`{"session_id":"v-1","cwd":"/src/app","hook_event_name":"Stop","last_assistant_message":"Done."}`),
+		}},
+		{"hook_spec", HookSpec{Harnesses: []string{"claude", "codex"}, Auth: AuthShared}},
+		{"hook_status", []HookStatus{
+			{Harness: "claude", Auth: AuthShared, Dir: "/home/u/.claude", State: HookInstalled},
+			{Harness: "codex", Auth: AuthShared, Dir: "/home/u/.codex", State: HookUntrusted},
+		}},
 	}
 }
 
 func contractRoutes() []string {
 	s := &Server{}
 	var out []string
-	for _, table := range [][]route{s.serverRoutes(), s.sessionRoutes(), s.workdirRoutes(), s.eventRoutes()} {
+	for _, table := range [][]route{s.serverRoutes(), s.sessionRoutes(), s.workdirRoutes(), s.eventRoutes(), s.hookRoutes()} {
 		for _, r := range table {
 			out = append(out, r.pattern)
 		}

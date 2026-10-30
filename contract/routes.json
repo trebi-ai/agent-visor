@@ -15,5 +15,9 @@
   "POST /v1/workdirs/{id}/archive",
   "POST /v1/workdirs/{id}/restore",
   "DELETE /v1/workdirs/{id}",
-  "GET /v1/events"
+  "GET /v1/events",
+  "POST /v1/hooks/{harness}",
+  "GET /v1/hooks",
+  "PUT /v1/hooks",
+  "DELETE /v1/hooks"
 ]

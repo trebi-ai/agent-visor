@@ -44,6 +44,9 @@ type Options struct {
 	// HolderCommand runs a holder; the visor adds the session id. Empty is
 	// this program with the argument hold.
 	HolderCommand []string
+	// HookCommand runs a vendor hook; the visor adds the harness name. Empty
+	// is this program with the home and the argument hook.
+	HookCommand []string
 	// TerminalCommand builds the command of an agent session in a PTY. Nil
 	// uses the harness program with ExtraArgs and has no resume command.
 	TerminalCommand TerminalCommand
@@ -485,6 +488,7 @@ func (v *Visor) boot(ctx context.Context) error {
 	for _, rec := range lost {
 		v.restart(rec)
 	}
+	v.replayHooks(ctx)
 	return nil
 }
 

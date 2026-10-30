@@ -37,6 +37,10 @@ type api interface {
 	ArchiveWorkdir(ctx context.Context, id string) error
 	RestoreWorkdir(ctx context.Context, id string) (Workdir, error)
 	RemoveWorkdir(ctx context.Context, id string, force bool) error
+	Hook(ctx context.Context, c HookCall) (Session, error)
+	Hooks(ctx context.Context, spec HookSpec) ([]HookStatus, error)
+	InstallHooks(ctx context.Context, spec HookSpec) ([]HookStatus, error)
+	RemoveHooks(ctx context.Context, spec HookSpec) ([]HookStatus, error)
 	Close(ctx context.Context) error
 }
 

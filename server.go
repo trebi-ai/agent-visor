@@ -71,7 +71,7 @@ const maxBody = 8 << 20
 // NewServer makes the HTTP handler for v.
 func NewServer(v *Visor) *Server {
 	s := &Server{v: v, log: v.log.With("source", "server"), mux: http.NewServeMux()}
-	for _, table := range [][]route{s.serverRoutes(), s.sessionRoutes(), s.workdirRoutes(), s.eventRoutes()} {
+	for _, table := range [][]route{s.serverRoutes(), s.sessionRoutes(), s.workdirRoutes(), s.eventRoutes(), s.hookRoutes()} {
 		for _, r := range table {
 			s.mux.HandleFunc(r.pattern, r.h)
 		}

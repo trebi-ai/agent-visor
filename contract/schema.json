@@ -117,6 +117,65 @@
       ],
       "type": "object"
     },
+    "HookCall": {
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "harness": {
+          "type": "string"
+        },
+        "payload": {},
+        "session": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "harness",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "HookSpec": {
+      "properties": {
+        "auth": {
+          "type": "string"
+        },
+        "dir": {
+          "type": "string"
+        },
+        "harnesses": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "HookStatus": {
+      "properties": {
+        "auth": {
+          "type": "string"
+        },
+        "dir": {
+          "type": "string"
+        },
+        "harness": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "harness",
+        "dir",
+        "state"
+      ],
+      "type": "object"
+    },
     "Info": {
       "properties": {
         "build": {
@@ -798,6 +857,18 @@
     },
     "hello": {
       "$ref": "#/$defs/Hello"
+    },
+    "hook_call": {
+      "$ref": "#/$defs/HookCall"
+    },
+    "hook_spec": {
+      "$ref": "#/$defs/HookSpec"
+    },
+    "hook_status": {
+      "items": {
+        "$ref": "#/$defs/HookStatus"
+      },
+      "type": "array"
     },
     "info": {
       "$ref": "#/$defs/Info"
