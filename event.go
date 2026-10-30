@@ -30,7 +30,10 @@ type Event struct {
 	Turn     int    `json:"turn,omitempty"`
 	VendorID string `json:"vendor_id,omitempty"`
 	Text     string `json:"text,omitempty"`
-	Delta    bool   `json:"delta,omitempty"`
+	// Input marks a user event that the visor wrote for a send or a first
+	// prompt. A vendor echo of the turn has no mark.
+	Input bool `json:"input,omitempty"`
+	Delta bool `json:"delta,omitempty"`
 	// Status is the activity hint of a status event.
 	Status  string   `json:"status,omitempty"`
 	Tool    *Tool    `json:"tool,omitempty"`

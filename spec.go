@@ -53,6 +53,9 @@ type StartSpec struct {
 	Harness string `json:"harness,omitempty"`
 	Model   string `json:"model,omitempty"`
 	Effort  string `json:"effort,omitempty"`
+	// Binary is the harness program. Empty uses the visor install, else
+	// PATH.
+	Binary string `json:"binary,omitempty"`
 	// Workdir is a workdir id. Empty finds or makes it from WorkingDir.
 	Workdir string `json:"workdir,omitempty"`
 	// WorkingDir is a folder in the workdir. Empty is the workdir path.
@@ -117,6 +120,21 @@ type Input struct {
 	Kind        string       `json:"kind,omitempty"`
 	Attachments []Attachment `json:"attachments,omitempty"`
 }
+
+// Delivery tells how a send reached the session.
+type Delivery string
+
+// Deliveries. The values are the agent-wire values.
+const (
+	// DeliveryPrompted means that a new turn starts, or that the vendor
+	// queues it.
+	DeliveryPrompted Delivery = Delivery(agentwire.DeliveryPrompted)
+	// DeliverySteered means that the input joined the running turn.
+	DeliverySteered Delivery = Delivery(agentwire.DeliverySteered)
+	// DeliveryHeld means that the input starts a new turn when the running
+	// turn ends.
+	DeliveryHeld Delivery = Delivery(agentwire.DeliveryHeld)
+)
 
 // Answer decides an open request.
 type Answer struct {

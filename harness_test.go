@@ -48,13 +48,13 @@ func (b *captureBackend) last() Launch {
 	return b.launches[len(b.launches)-1]
 }
 
-func (h *captureHandle) Session() string                              { return h.id }
-func (h *captureHandle) VendorID() string                             { return "" }
-func (h *captureHandle) PID() int                                     { return 0 }
-func (h *captureHandle) Send(context.Context, Input) error            { return nil }
-func (h *captureHandle) Interrupt(context.Context) error              { return nil }
-func (h *captureHandle) Answer(context.Context, string, Answer) error { return nil }
-func (h *captureHandle) Events() <-chan Event                         { return h.ch }
+func (h *captureHandle) Session() string                               { return h.id }
+func (h *captureHandle) VendorID() string                              { return "" }
+func (h *captureHandle) PID() int                                      { return 0 }
+func (h *captureHandle) Send(context.Context, Input) (Delivery, error) { return DeliveryPrompted, nil }
+func (h *captureHandle) Interrupt(context.Context) error               { return nil }
+func (h *captureHandle) Answer(context.Context, string, Answer) error  { return nil }
+func (h *captureHandle) Events() <-chan Event                          { return h.ch }
 
 func (h *captureHandle) Close(context.Context) error {
 	h.once.Do(func() { close(h.ch) })
@@ -110,6 +110,16 @@ func TestHarnessLaunchLayers(t *testing.T) {
 	}
 	if l.Home != sep || l.Env["FAKEH_HOME"] != sep || l.Binary != "" {
 		t.Fatalf("launch: home %q binary %q", l.Home, l.Binary)
+	}
+	own, err := v.Start(ctx, StartSpec{Kind: kindCapture, Harness: "fakeh", WorkingDir: t.TempDir(), Binary: "/opt/fakeh"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := b.last(); l.Binary != "/opt/fakeh" {
+		t.Fatalf("spec binary: %q", l.Binary)
+	}
+	if err := v.Stop(ctx, own.ID); err != nil {
+		t.Fatal(err)
 	}
 	// A live session blocks a switch of the harness binary.
 	if _, err := v.InstallHarness(ctx, "fakeh", "1.0.0"); !errors.Is(err, ErrBusy) {

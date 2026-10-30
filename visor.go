@@ -165,7 +165,7 @@ func New(ctx context.Context, o Options) (*Visor, error) {
 		v.log.Warn("reconcile the agent-wire ledger", "err", err)
 	}
 	v.harnesses = harness.New(o.Home, st, v.wire, v.harnessOptions())
-	v.backends[KindWire] = newWireBackend(v.wire)
+	v.backends[KindWire] = newWireBackend(v.wire, o.Home)
 	if exe, err := os.Executable(); err == nil && len(o.HolderCommand) == 0 {
 		o.HolderCommand = []string{exe, "hold"}
 	}
@@ -260,28 +260,30 @@ func (v *Visor) Sessions(_ context.Context, f Filter) ([]Session, error) {
 	return out, nil
 }
 
-// Send writes a user turn. It resumes a suspended or lost session first.
-func (v *Visor) Send(ctx context.Context, id string, in Input) error {
+// Send writes a user turn. It resumes a suspended or lost session first;
+// a resume gives DeliveryPrompted.
+func (v *Visor) Send(ctx context.Context, id string, in Input) (Delivery, error) {
 	rec, h, err := v.lookup(id)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := v.handoverBusy(rec); err != nil {
-		return err
+		return "", err
 	}
 	if h == nil {
-		return v.resume(ctx, rec, &in)
+		return DeliveryPrompted, v.resume(ctx, rec, &in)
 	}
-	v.emit(ctx, rec, Event{Type: EventUser, Text: in.Text})
+	v.emit(ctx, rec, Event{Type: EventUser, Text: in.Text, Input: true})
 	// Move first: a fast result can come before Send returns.
 	if err := v.setState(ctx, rec, StateRunning); err != nil {
-		return err
+		return "", err
 	}
-	if err := h.Send(ctx, in); err != nil {
+	d, err := h.Send(ctx, in)
+	if err != nil {
 		v.moveIf(ctx, rec, StateRunning, StateIdle)
-		return err
+		return "", err
 	}
-	return nil
+	return d, nil
 }
 
 // Interrupt stops the current turn.
@@ -560,12 +562,13 @@ func (v *Visor) launch(ctx context.Context, rec *record, b Backend, spec StartSp
 	v.mu.Unlock()
 	hl, err := v.harnesses.Launch(ctx, spec.Harness)
 	spec.ExtraArgs = append(hl.Args, spec.ExtraArgs...)
+	hl.Binary = cmp.Or(spec.Binary, hl.Binary)
 	l := Launch{
 		Session: s, Spec: spec, Dir: s.WorkingDir, Resume: resume, Prompt: prompt, Binary: hl.Binary, Home: hl.Home,
 		Env: mergeEnv(v.opts.Env, hl.Env, spec.Env, visorEnv(s, w, v.opts.Socket)),
 	}
 	if prompt != nil {
-		v.emit(ctx, rec, Event{Type: EventUser, Text: prompt.Text})
+		v.emit(ctx, rec, Event{Type: EventUser, Text: prompt.Text, Input: true})
 	}
 	var h Handle
 	if err == nil {

@@ -414,7 +414,8 @@ func (a *AttachStream) handle(ctx context.Context, f ClientFrame) error {
 	if a.view == ViewChat {
 		switch f.Type {
 		case ClientSend:
-			return a.v.Send(ctx, a.session, Input{Text: f.Text})
+			_, err := a.v.Send(ctx, a.session, Input{Text: f.Text})
+			return err
 		case ClientInterrupt:
 			return a.v.Interrupt(ctx, a.session)
 		}

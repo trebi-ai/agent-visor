@@ -79,7 +79,7 @@ func TestPTYAttachLeaseAndExit(t *testing.T) {
 		t.Fatal(err)
 	}
 	a1.waitFrame(func(f Frame) bool { return f.Type == FrameLease && f.Holder == LeaseNone })
-	if err := v.Send(t.Context(), s.ID, Input{Text: "more"}); err != nil {
+	if _, err := v.Send(t.Context(), s.ID, Input{Text: "more"}); err != nil {
 		t.Fatal(err)
 	}
 	a1.waitOutput("echo:more")

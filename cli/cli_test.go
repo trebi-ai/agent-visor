@@ -60,8 +60,8 @@ func (f *fakeVisor) Sessions(_ context.Context, fl agentvisor.Filter) ([]agentvi
 	return out, nil
 }
 
-func (f *fakeVisor) Send(context.Context, string, agentvisor.Input) error {
-	return agentvisor.ErrUnsupported
+func (f *fakeVisor) Send(context.Context, string, agentvisor.Input) (agentvisor.Delivery, error) {
+	return "", agentvisor.ErrUnsupported
 }
 func (f *fakeVisor) Interrupt(context.Context, string) error { return agentvisor.ErrUnsupported }
 func (f *fakeVisor) Answer(context.Context, string, string, agentvisor.Answer) error {

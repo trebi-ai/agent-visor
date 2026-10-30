@@ -3,6 +3,7 @@ package agentvisor
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync"
 
 	agentwire "github.com/trebi-ai/agent-wire"
@@ -10,7 +11,8 @@ import (
 
 // wireBackend hosts agent-wire sessions in the visor process.
 type wireBackend struct {
-	rt *agentwire.Runtime
+	rt   *agentwire.Runtime
+	home string
 }
 
 type wireHandle struct {
@@ -25,8 +27,8 @@ var (
 	_ Handle  = (*wireHandle)(nil)
 )
 
-func newWireBackend(rt *agentwire.Runtime) *wireBackend {
-	return &wireBackend{rt: rt}
+func newWireBackend(rt *agentwire.Runtime, home string) *wireBackend {
+	return &wireBackend{rt: rt, home: home}
 }
 
 func (b *wireBackend) Kind() Kind { return KindWire }
@@ -40,6 +42,7 @@ func (b *wireBackend) Start(ctx context.Context, l Launch) (Handle, error) {
 		Harness: agentwire.Harness(l.Spec.Harness), Binary: l.Binary, WorkingDir: l.Dir, Env: l.Env, Home: l.Home,
 		Model: l.Spec.Model, Effort: l.Spec.Effort, Permissions: l.Spec.Permissions.wire(), MCPServers: wireMCPServers(l.Spec.MCPServers),
 		Skills: wireSkills(l.Spec.Skills), Instructions: l.Spec.Instructions, ExtraArgs: l.Spec.ExtraArgs, Raw: l.Spec.Raw,
+		LogPath: filepath.Join(b.home, "sessions", l.Session.ID, "frames.ndjson"),
 	}
 	var (
 		s   agentwire.Session
@@ -57,7 +60,7 @@ func (b *wireBackend) Start(ctx context.Context, l Launch) (Handle, error) {
 	h := &wireHandle{id: l.Session.ID, s: s, ch: make(chan Event, 64)}
 	go h.pump()
 	if l.Prompt != nil {
-		if err := h.Send(ctx, *l.Prompt); err != nil {
+		if _, err := h.Send(ctx, *l.Prompt); err != nil {
 			_ = h.Close(context.WithoutCancel(ctx)) // the send error is the one to report
 			return nil, err
 		}
@@ -76,12 +79,12 @@ func (h *wireHandle) VendorID() string { return h.s.ID() }
 
 func (h *wireHandle) PID() int { return h.s.PID() }
 
-func (h *wireHandle) Send(ctx context.Context, in Input) error {
-	_, err := agentwire.Send(ctx, h.s, agentwire.Prompt{Text: in.Text, Kind: in.Kind, Attachments: wireAttachments(in.Attachments)})
+func (h *wireHandle) Send(ctx context.Context, in Input) (Delivery, error) {
+	d, err := agentwire.Send(ctx, h.s, agentwire.Prompt{Text: in.Text, Kind: in.Kind, Attachments: wireAttachments(in.Attachments)})
 	if err != nil {
-		return fmt.Errorf("send to %s: %w", h.id, err)
+		return "", fmt.Errorf("send to %s: %w", h.id, err)
 	}
-	return nil
+	return Delivery(d), nil
 }
 
 func (h *wireHandle) Interrupt(ctx context.Context) error { return h.s.Interrupt(ctx) }

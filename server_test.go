@@ -77,7 +77,7 @@ func TestClientStreamSurvivesVisorRestart(t *testing.T) {
 	ts.stop(t)
 	ts = serveTest(t, newTestVisor(t, home, scriptTurns, nil), sock)
 	defer ts.stop(t)
-	if err := c.Send(t.Context(), s.ID, Input{Text: "again"}); err != nil {
+	if _, err := c.Send(t.Context(), s.ID, Input{Text: "again"}); err != nil {
 		t.Fatal(err)
 	}
 	rest := collect(t, st, func(e Event) bool { return e.Type == EventResult })

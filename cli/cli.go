@@ -48,7 +48,7 @@ type Visor interface {
 	Start(ctx context.Context, spec agentvisor.StartSpec) (agentvisor.Session, error)
 	Session(ctx context.Context, id string) (agentvisor.Session, error)
 	Sessions(ctx context.Context, f agentvisor.Filter) ([]agentvisor.Session, error)
-	Send(ctx context.Context, id string, in agentvisor.Input) error
+	Send(ctx context.Context, id string, in agentvisor.Input) (agentvisor.Delivery, error)
 	Interrupt(ctx context.Context, id string) error
 	Answer(ctx context.Context, id, requestID string, a agentvisor.Answer) error
 	Stop(ctx context.Context, id string) error

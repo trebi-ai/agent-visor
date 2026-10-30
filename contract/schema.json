@@ -74,6 +74,9 @@
         "harness": {
           "type": "string"
         },
+        "input": {
+          "type": "boolean"
+        },
         "limits": {
           "$ref": "#/$defs/Limits"
         },
@@ -798,6 +801,9 @@
     },
     "StartSpec": {
       "properties": {
+        "binary": {
+          "type": "string"
+        },
         "command": {
           "items": {
             "type": "string"
@@ -1118,6 +1124,17 @@
       ],
       "type": "object"
     },
+    "sendReply": {
+      "properties": {
+        "delivery": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "delivery"
+      ],
+      "type": "object"
+    },
     "versionRequest": {
       "properties": {
         "version": {
@@ -1195,6 +1212,9 @@
     },
     "project": {
       "$ref": "#/$defs/Project"
+    },
+    "send_reply": {
+      "$ref": "#/$defs/sendReply"
     },
     "session": {
       "$ref": "#/$defs/Session"

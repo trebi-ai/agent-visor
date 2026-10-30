@@ -55,7 +55,7 @@ type Handle interface {
 	Session() string
 	VendorID() string
 	PID() int
-	Send(ctx context.Context, in Input) error
+	Send(ctx context.Context, in Input) (Delivery, error)
 	Interrupt(ctx context.Context) error
 	Answer(ctx context.Context, requestID string, a Answer) error
 	Close(ctx context.Context) error

@@ -1,5 +1,13 @@
 [
   {
+    "seq": 39,
+    "session": "ses_1",
+    "at": "2026-10-30T12:00:00Z",
+    "type": "user",
+    "text": "Also run the linter.",
+    "input": true
+  },
+  {
     "seq": 40,
     "session": "ses_1",
     "at": "2026-10-30T12:00:00Z",

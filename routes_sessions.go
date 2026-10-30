@@ -14,6 +14,11 @@ func (s *Server) sessionRoutes() []route {
 	}
 }
 
+// sendReply is the reply of a send.
+type sendReply struct {
+	Delivery Delivery `json:"delivery"`
+}
+
 // answerRequest is the body of an answer.
 type answerRequest struct {
 	RequestID string `json:"request_id"`
@@ -53,7 +58,8 @@ func (s *Server) sendSession(w http.ResponseWriter, r *http.Request) {
 	if !s.decode(w, r, &in) {
 		return
 	}
-	s.reply(w, http.StatusNoContent, nil, s.v.Send(r.Context(), r.PathValue("id"), in))
+	d, err := s.v.Send(r.Context(), r.PathValue("id"), in)
+	s.reply(w, http.StatusOK, sendReply{Delivery: d}, err)
 }
 
 func (s *Server) interruptSession(w http.ResponseWriter, r *http.Request) {

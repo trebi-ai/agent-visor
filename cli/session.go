@@ -236,7 +236,8 @@ func (a *app) sessionSend(ctx context.Context, cmd *cli.Command) error {
 		text = string(data)
 	}
 	return a.with(ctx, cmd, func(v Visor) error {
-		return v.Send(ctx, cmd.Args().First(), agentvisor.Input{Text: text})
+		_, err := v.Send(ctx, cmd.Args().First(), agentvisor.Input{Text: text})
+		return err
 	})
 }
 
@@ -280,7 +281,8 @@ func (a *app) sessionResume(ctx context.Context, cmd *cli.Command) error {
 		if s.State != agentvisor.StateSuspended && s.State != agentvisor.StateLost {
 			return fmt.Errorf("%w: session %s is %s; only a suspended or lost session resumes", agentvisor.ErrState, s.ID, s.State)
 		}
-		return v.Send(ctx, s.ID, agentvisor.Input{Text: prompt})
+		_, err = v.Send(ctx, s.ID, agentvisor.Input{Text: prompt})
+		return err
 	})
 }
 

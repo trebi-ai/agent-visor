@@ -25,7 +25,7 @@ type api interface {
 	Start(ctx context.Context, spec StartSpec) (Session, error)
 	Session(ctx context.Context, id string) (Session, error)
 	Sessions(ctx context.Context, f Filter) ([]Session, error)
-	Send(ctx context.Context, id string, in Input) error
+	Send(ctx context.Context, id string, in Input) (Delivery, error)
 	Interrupt(ctx context.Context, id string) error
 	Answer(ctx context.Context, id, requestID string, a Answer) error
 	Stop(ctx context.Context, id string) error
@@ -117,8 +117,8 @@ func TestStartTurnAndReplay(t *testing.T) {
 		if got.VendorID != "v1" || got.Turns != 1 {
 			t.Fatalf("after one turn: vendor %q turns %d", got.VendorID, got.Turns)
 		}
-		if err := v.Send(t.Context(), s.ID, Input{Text: "again"}); err != nil {
-			t.Fatal(err)
+		if d, err := v.Send(t.Context(), s.ID, Input{Text: "again"}); err != nil || d != DeliveryPrompted {
+			t.Fatalf("send: %q %v", d, err)
 		}
 		for waitState(t, v, s.ID, StateIdle).Turns != 2 {
 			time.Sleep(10 * time.Millisecond)
@@ -141,6 +141,9 @@ func TestStartTurnAndReplay(t *testing.T) {
 		types := []EventType{}
 		for _, e := range collect(t, st, func(e Event) bool { return e.Type == EventResult }) {
 			types = append(types, e.Type)
+			if e.Type == EventUser && !e.Input {
+				t.Errorf("the prompt has no input mark: %+v", e)
+			}
 		}
 		want := []EventType{EventSessionState, EventUser, EventSessionState, EventInit, EventAssistant, EventResult}
 		if fmt.Sprint(types) != fmt.Sprint(want) {
@@ -197,7 +200,7 @@ func TestStopAndInterruptStates(t *testing.T) {
 			t.Fatal(err)
 		}
 		waitState(t, v, s.ID, StateExited)
-		if err := v.Send(t.Context(), s.ID, Input{Text: "more"}); !errors.Is(err, ErrState) {
+		if _, err := v.Send(t.Context(), s.ID, Input{Text: "more"}); !errors.Is(err, ErrState) {
 			t.Fatalf("send to an exited session: %v, want ErrState", err)
 		}
 		if _, err := v.Session(t.Context(), "ses_none"); !errors.Is(err, ErrNotFound) {
@@ -222,7 +225,7 @@ func TestSuspendAndResumeAcrossRestart(t *testing.T) {
 		v = open(t, home, scriptTurns, nil)
 		defer v.Close(context.Background())
 		waitState(t, v, s.ID, StateSuspended)
-		if err := v.Send(t.Context(), s.ID, Input{Text: "back"}); err != nil {
+		if _, err := v.Send(t.Context(), s.ID, Input{Text: "back"}); err != nil {
 			t.Fatal(err)
 		}
 		got := waitState(t, v, s.ID, StateIdle)

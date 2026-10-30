@@ -30,3 +30,7 @@
 - Add the socket routes and the `Client` methods for harnesses (`/v1/harnesses/...`), attach (`GET /v1/sessions/{id}/attach`, a WebSocket), and handover (`POST /v1/sessions/{id}/handover`). The attached frame now has `view`. An attach error frame uses the same codes as the error body.
 - Add the CLI commands `hold`, `session attach`, `session shell`, and `session handover`. Ctrl-] detaches.
 - Require agent-wire v0.8.0.
+- `Visor.Send`, `Client.Send`, and `Handle.Send` return a `Delivery`: `prompted`, `steered`, or `held`. The send route answers 200 with `{"delivery": "..."}`.
+- Mark the user event that the visor writes for a send or a first prompt with `input: true`. A vendor echo has no mark.
+- Add `StartSpec.Binary`: the harness program. It wins over the visor install in `Launch.Binary`.
+- The wire backend writes the agent-wire frame log to `sessions/<id>/frames.ndjson` with mode 0600.

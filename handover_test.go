@@ -65,7 +65,7 @@ func TestHandoverBothWays(t *testing.T) {
 		t.Fatalf("wire session after the handover: %+v", back)
 	}
 	waitDead(t, pty.PID)
-	if err := v.Send(t.Context(), s.ID, Input{Text: "again"}); err != nil {
+	if _, err := v.Send(t.Context(), s.ID, Input{Text: "again"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := waitState(t, v, s.ID, StateIdle); got.Turns != 2 || got.VendorID != "v1" {

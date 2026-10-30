@@ -105,7 +105,7 @@ func (b *ptyBackend) Start(ctx context.Context, l Launch) (Handle, error) {
 	}
 	h := b.track(id, l.Session.VendorID, c)
 	if l.Prompt != nil {
-		if err := h.Send(ctx, *l.Prompt); err != nil {
+		if _, err := h.Send(ctx, *l.Prompt); err != nil {
 			_ = h.Close(context.WithoutCancel(ctx)) // the send error is the one to report
 			return nil, err
 		}
@@ -317,8 +317,11 @@ func (h *ptyHandle) PID() int {
 }
 
 // Send types the text and a return.
-func (h *ptyHandle) Send(_ context.Context, in Input) error {
-	return h.write([]byte(in.Text + "\r"))
+func (h *ptyHandle) Send(_ context.Context, in Input) (Delivery, error) {
+	if err := h.write([]byte(in.Text + "\r")); err != nil {
+		return "", err
+	}
+	return DeliveryPrompted, nil
 }
 
 func (h *ptyHandle) Interrupt(context.Context) error { return h.write([]byte{0x03}) }

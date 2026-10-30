@@ -91,8 +91,10 @@ func (c *Client) Sessions(ctx context.Context, f Filter) ([]Session, error) {
 }
 
 // Send writes a user turn.
-func (c *Client) Send(ctx context.Context, id string, in Input) error {
-	return c.do(ctx, http.MethodPost, "/v1/sessions/"+url.PathEscape(id)+"/send", in, nil)
+func (c *Client) Send(ctx context.Context, id string, in Input) (Delivery, error) {
+	var out sendReply
+	err := c.do(ctx, http.MethodPost, "/v1/sessions/"+url.PathEscape(id)+"/send", in, &out)
+	return out.Delivery, err
 }
 
 // Interrupt stops the current turn.
