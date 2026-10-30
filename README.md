@@ -4,7 +4,7 @@ agent-visor keeps agent and terminal sessions alive and lets you attach to them.
 
 It is a Go library and a process. It sits one layer above [agent-wire](https://github.com/trebi-ai/agent-wire). agent-wire drives one vendor CLI over its structured protocol and keeps no state. agent-visor holds many sessions on one machine, keeps their events in a log, and survives a restart of the product that uses it.
 
-Status: no code yet.
+Status: early. The library core works in the process. The socket, the CLI, and the holders come next.
 
 ## What it does
 
