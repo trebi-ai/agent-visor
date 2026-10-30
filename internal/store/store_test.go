@@ -91,3 +91,29 @@ func TestEvents(t *testing.T) {
 		t.Fatalf("events after delete: %d %v", len(rows), err)
 	}
 }
+
+func TestLastSource(t *testing.T) {
+	t.Parallel()
+	st, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "visor.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if run, seq, err := st.LastSource(t.Context(), "s1"); err != nil || run != "" || seq != 0 {
+		t.Fatalf("no source: %q %d %v", run, seq, err)
+	}
+	for _, r := range []store.EventRow{
+		{Seq: 1, Session: "s1", Source: "r1", SourceSeq: 1},
+		{Seq: 2, Session: "s1", Source: "r1", SourceSeq: 2},
+		{Seq: 3, Session: "s2", Source: "r9", SourceSeq: 5},
+		{Seq: 4, Session: "s1"},
+	} {
+		r.Data = []byte("{}")
+		if err := st.AppendEvent(t.Context(), r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if run, seq, err := st.LastSource(t.Context(), "s1"); err != nil || run != "r1" || seq != 2 {
+		t.Fatalf("last source: %q %d %v", run, seq, err)
+	}
+}

@@ -4,17 +4,14 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	agentwire "github.com/trebi-ai/agent-wire"
@@ -30,10 +27,10 @@ type TerminalCommand func(l Launch) ([]string, error)
 // ptyBackend hosts sessions in a PTY. A holder process owns each PTY, so the
 // session lives through a visor restart.
 type ptyBackend struct {
-	home      string
-	holderCmd []string
-	termCmd   TerminalCommand
-	log       *slog.Logger
+	home    string
+	hs      *holders
+	termCmd TerminalCommand
+	log     *slog.Logger
 
 	mu      sync.Mutex
 	handles map[*ptyHandle]struct{}
@@ -76,7 +73,7 @@ const (
 )
 
 func newPTYBackend(home string, holderCmd []string, termCmd TerminalCommand, log *slog.Logger) *ptyBackend {
-	return &ptyBackend{home: home, holderCmd: holderCmd, termCmd: termCmd, log: log, handles: map[*ptyHandle]struct{}{}}
+	return &ptyBackend{home: home, hs: newHolders(home, "holders", holderCmd), termCmd: termCmd, log: log, handles: map[*ptyHandle]struct{}{}}
 }
 
 func (b *ptyBackend) Kind() Kind { return KindPTY }
@@ -93,14 +90,14 @@ func (b *ptyBackend) Start(ctx context.Context, l Launch) (Handle, error) {
 	}
 	id := l.Session.ID
 	cfg := holder.Config{
-		ID: id, Socket: b.socket(id), Command: argv, Dir: l.Dir, Env: env,
-		Log: filepath.Join(b.home, "sessions", id, "pty.log"), ExitFile: b.exitFile(id),
+		ID: id, Socket: b.hs.socket(id), Command: argv, Dir: l.Dir, Env: env,
+		Log: filepath.Join(b.home, "sessions", id, "pty.log"), ExitFile: b.hs.exitFile(id),
 	}
-	exited, err := b.spawn(ctx, cfg)
+	exited, err := b.hs.spawn(ctx, cfg, nil)
 	if err != nil {
 		return nil, err
 	}
-	c, err := b.dial(ctx, id, exited)
+	c, err := b.hs.dial(ctx, id, exited, holderDialTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -117,38 +114,25 @@ func (b *ptyBackend) Start(ctx context.Context, l Launch) (Handle, error) {
 // Recover connects to each live holder. A holder that ended while no visor
 // ran left an exit file; its handle reports the exit and ends.
 func (b *ptyBackend) Recover(ctx context.Context) ([]Handle, error) {
-	entries, err := os.ReadDir(filepath.Join(b.home, "holders"))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
+	socks, exits, err := b.hs.scan()
 	if err != nil {
-		return nil, fmt.Errorf("recover holders: %w", err)
+		return nil, err
 	}
 	var out []Handle
-	live := map[string]bool{}
-	for _, e := range entries {
-		id, ok := strings.CutSuffix(e.Name(), ".sock")
-		if !ok {
-			continue
-		}
+	for _, id := range socks {
 		dctx, cancel := context.WithTimeout(ctx, holderRedial)
-		c, err := holder.Dial(dctx, b.socket(id))
+		c, err := holder.Dial(dctx, b.hs.socket(id), holder.Cursor{})
 		cancel()
 		if err != nil {
 			b.log.Warn("recover a holder", "session_id", id, "err", err)
 			if !errors.Is(err, holder.ErrProtocol) {
-				_ = os.Remove(b.socket(id)) // a stale socket of a dead holder
+				_ = os.Remove(b.hs.socket(id)) // a stale socket of a dead holder
 			}
 			continue
 		}
-		live[id] = true
 		out = append(out, b.track(id, "", c))
 	}
-	for _, e := range entries {
-		id, ok := strings.CutSuffix(e.Name(), ".exit")
-		if !ok || live[id] {
-			continue
-		}
+	for _, id := range exits {
 		out = append(out, b.track(id, "", nil))
 	}
 	return out, nil
@@ -198,60 +182,6 @@ func (b *ptyBackend) command(l Launch, env []string) ([]string, error) {
 	return append(argv, l.Spec.ExtraArgs...), nil
 }
 
-// spawn starts the holder process in its own process session, so that it
-// outlives the visor. The channel gives the end of the process.
-func (b *ptyBackend) spawn(ctx context.Context, cfg holder.Config) (<-chan error, error) {
-	if len(b.holderCmd) == 0 {
-		return nil, fmt.Errorf("%w: no holder command", ErrUnsupported)
-	}
-	data, err := json.Marshal(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("start holder: %w", err)
-	}
-	dir := filepath.Join(b.home, "sessions", cfg.ID)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, fmt.Errorf("start holder: %w", err)
-	}
-	logf, err := os.OpenFile(filepath.Join(dir, "holder.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return nil, fmt.Errorf("start holder: %w", err)
-	}
-	defer logf.Close()
-	args := append(append([]string{}, b.holderCmd[1:]...), cfg.ID)
-	cmd := exec.CommandContext(context.WithoutCancel(ctx), b.holderCmd[0], args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = bytes.NewReader(data), logf, logf
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start holder: %w", err)
-	}
-	exited := make(chan error, 1)
-	// The goroutine reaps the holder; it ends with the holder process.
-	go func() { exited <- cmd.Wait() }()
-	return exited, nil
-}
-
-// dial waits for the socket of a new holder.
-func (b *ptyBackend) dial(ctx context.Context, id string, exited <-chan error) (*holder.Client, error) {
-	ctx, cancel := context.WithTimeout(ctx, holderDialTimeout)
-	defer cancel()
-	t := time.NewTicker(holderPoll)
-	defer t.Stop()
-	for {
-		if _, err := os.Stat(b.socket(id)); err == nil {
-			if c, err := holder.Dial(ctx, b.socket(id)); err == nil {
-				return c, nil
-			}
-		}
-		select {
-		case err := <-exited:
-			return nil, fmt.Errorf("holder of %s ended: %w: %s", id, err, b.holderLog(id))
-		case <-ctx.Done():
-			return nil, fmt.Errorf("dial holder of %s: %w", id, ctx.Err())
-		case <-t.C:
-		}
-	}
-}
-
 // track starts the pump of a holder. A nil client is a holder that ended
 // while no visor ran.
 func (b *ptyBackend) track(id, vendor string, c *holder.Client) *ptyHandle {
@@ -277,27 +207,6 @@ func (b *ptyBackend) untrack(h *ptyHandle) {
 	b.mu.Unlock()
 }
 
-func (b *ptyBackend) socket(id string) string {
-	return filepath.Join(b.home, "holders", id+".sock")
-}
-
-func (b *ptyBackend) exitFile(id string) string {
-	return filepath.Join(b.home, "holders", id+".exit")
-}
-
-// readExit reads the exit code that a holder wrote. -1 means unknown.
-func (b *ptyBackend) readExit(id string) int {
-	data, err := os.ReadFile(b.exitFile(id))
-	if err != nil {
-		return -1
-	}
-	var e holder.Exit
-	if json.Unmarshal(data, &e) != nil {
-		return -1
-	}
-	return e.Code
-}
-
 // logTail gives the end of the output log of a session, one ring long.
 func (b *ptyBackend) logTail(id string) ([]byte, error) {
 	f, err := os.Open(filepath.Join(b.home, "sessions", id, "pty.log"))
@@ -315,15 +224,6 @@ func (b *ptyBackend) logTail(id string) ([]byte, error) {
 		return nil, err
 	}
 	return buf, nil
-}
-
-// holderLog gives the end of the log of a holder, for an error.
-func (b *ptyBackend) holderLog(id string) string {
-	data, err := os.ReadFile(filepath.Join(b.home, "sessions", id, "holder.log"))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data[max(0, len(data)-512):]))
 }
 
 func (h *ptyHandle) Session() string { return h.id }
@@ -401,8 +301,8 @@ func (h *ptyHandle) pump() {
 		h.snapshot(tail)
 	}
 	var code *int
-	if c := h.b.readExit(h.id); c >= 0 {
-		code = &c
+	if e, ok := h.b.hs.readExit(h.id); ok {
+		code = &e.Code
 	}
 	h.finish(code)
 }
@@ -417,11 +317,11 @@ func (h *ptyHandle) redial() *holder.Client {
 	_ = old.Close() // the connection failed already
 	deadline := time.Now().Add(holderRedial)
 	for !h.isDetached() && time.Now().Before(deadline) {
-		if _, err := os.Stat(h.b.socket(h.id)); err != nil {
+		if _, err := os.Stat(h.b.hs.socket(h.id)); err != nil {
 			return nil
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), holderRedial)
-		c, err := holder.Dial(ctx, h.b.socket(h.id))
+		c, err := holder.Dial(ctx, h.b.hs.socket(h.id), holder.Cursor{})
 		cancel()
 		if err == nil {
 			h.mu.Lock()
@@ -445,7 +345,7 @@ func (h *ptyHandle) finish(code *int) {
 	case h.events <- Event{Type: EventExit, ExitCode: code}:
 	case <-h.stop:
 	}
-	if err := os.Remove(h.b.exitFile(h.id)); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := h.b.hs.remove(h.id); err != nil {
 		h.b.log.Warn("remove the exit file", "session_id", h.id, "err", err)
 	}
 	h.mu.Lock()

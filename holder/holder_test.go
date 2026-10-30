@@ -135,7 +135,7 @@ func dial(t *testing.T, path string) *Client {
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-		c, err := Dial(ctx, path)
+		c, err := Dial(ctx, path, Cursor{})
 		cancel()
 		if err == nil {
 			return c

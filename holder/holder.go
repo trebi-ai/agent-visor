@@ -1,6 +1,7 @@
-// Package holder owns the PTY of one session, so that the session lives
-// through a restart of the visor. It imports nothing from this repository:
-// an old holder keeps its protocol until its session ends.
+// Package holder owns the PTY or the agent-wire session of one session, so
+// that the session lives through a restart of the visor. It imports nothing
+// from this repository: an old holder keeps its protocol until its session
+// ends.
 package holder
 
 import (
@@ -25,7 +26,8 @@ import (
 // Config tells a holder what to run. The visor sends it as JSON on stdin,
 // because Env can hold secrets.
 type Config struct {
-	ID string `json:"id"`
+	ID   string `json:"id"`
+	Mode Mode   `json:"mode,omitempty"`
 	// Socket is the path of the holder socket, mode 0600.
 	Socket  string   `json:"socket"`
 	Command []string `json:"command"`
@@ -39,7 +41,12 @@ type Config struct {
 	// ExitFile gets the JSON Exit when the process ends, mode 0600.
 	ExitFile string `json:"exit_file,omitempty"`
 	// Ring is the size of the screen buffer in bytes. Zero is 256 KiB.
-	Ring   int          `json:"ring,omitempty"`
+	Ring int `json:"ring,omitempty"`
+	// Wire is the session of a wire holder.
+	Wire *WireConfig `json:"wire,omitempty"`
+	// Spool gets the events that no client stored when a wire holder ends,
+	// mode 0600.
+	Spool  string       `json:"spool,omitempty"`
 	Logger *slog.Logger `json:"-"`
 }
 
@@ -94,20 +101,26 @@ func ReadConfig(r io.Reader, id string) (Config, error) {
 	return c, nil
 }
 
-// Run starts the process in a PTY and serves the socket until the process
-// ends. When ctx ends, Run ends the process first.
+// Run starts the process in a PTY, or the agent-wire session of a wire
+// holder, and serves the socket until the process ends. When ctx ends, Run
+// ends the process first.
 func Run(ctx context.Context, c Config) error {
 	if err := c.validate(); err != nil {
 		return err
+	}
+	if c.Mode == ModeWire {
+		return runWire(ctx, c)
 	}
 	s := &server{
 		cfg: c, log: cmp.Or(c.Logger, slog.Default()).With("source", "holder", "session_id", c.ID),
 		exited: make(chan struct{}), peers: map[*peer]struct{}{},
 		size: Size{Cols: cmp.Or(c.Cols, defaultCols), Rows: cmp.Or(c.Rows, defaultRows)},
 	}
-	if err := s.listen(ctx); err != nil {
+	ln, err := listen(ctx, c.Socket)
+	if err != nil {
 		return err
 	}
+	s.ln = ln
 	defer s.removeSocket()
 	if err := s.startProcess(); err != nil {
 		_ = s.ln.Close() // the start error is the one to report
@@ -136,33 +149,17 @@ func (c Config) validate() error {
 	switch {
 	case c.ID == "":
 		return errors.New("holder: no session id")
-	case len(c.Command) == 0 || c.Command[0] == "":
+	case c.Mode != ModePTY && c.Mode != ModeWire:
+		return fmt.Errorf("holder: unknown mode %q", c.Mode)
+	case c.Mode == ModeWire && c.Wire == nil:
+		return errors.New("holder: no wire session")
+	case c.Mode == ModePTY && (len(c.Command) == 0 || c.Command[0] == ""):
 		return errors.New("holder: no command")
 	case c.Socket == "":
 		return errors.New("holder: no socket path")
 	case len(c.Socket) > maxSocketPath:
 		return fmt.Errorf("holder: the socket path has %d bytes; the limit is %d", len(c.Socket), maxSocketPath)
 	}
-	return nil
-}
-
-func (s *server) listen(ctx context.Context) error {
-	if err := os.MkdirAll(filepath.Dir(s.cfg.Socket), 0o700); err != nil {
-		return fmt.Errorf("holder socket: %w", err)
-	}
-	if err := os.Remove(s.cfg.Socket); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("holder socket: %w", err)
-	}
-	var lc net.ListenConfig
-	ln, err := lc.Listen(ctx, "unix", s.cfg.Socket)
-	if err != nil {
-		return fmt.Errorf("holder socket: %w", err)
-	}
-	if err := os.Chmod(s.cfg.Socket, 0o600); err != nil {
-		_ = ln.Close() // the chmod error is the one to report
-		return fmt.Errorf("holder socket: %w", err)
-	}
-	s.ln = ln
 	return nil
 }
 
@@ -276,7 +273,7 @@ func (s *server) join(conn net.Conn) (*peer, error) {
 		return nil, err
 	}
 	s.mu.Lock()
-	h := Hello{Protocol: Protocol, ID: s.cfg.ID, PID: os.Getpid(), ChildPID: s.cmd.Process.Pid, Cols: s.size.Cols, Rows: s.size.Rows, StartedAt: s.start}
+	h := Hello{Protocol: Protocol, Mode: ModePTY, ID: s.cfg.ID, PID: os.Getpid(), ChildPID: s.cmd.Process.Pid, Cols: s.size.Cols, Rows: s.size.Rows, StartedAt: s.start}
 	s.mu.Unlock()
 	data, err := json.Marshal(h)
 	if err != nil {
@@ -290,7 +287,7 @@ func (s *server) join(conn net.Conn) (*peer, error) {
 		return nil, err
 	}
 	var their Hello
-	if t != MsgHello || json.Unmarshal(data, &their) != nil || their.Protocol != Protocol {
+	if t != MsgHello || json.Unmarshal(data, &their) != nil || their.Protocol < MinProtocol || their.Protocol > Protocol {
 		return nil, ErrProtocol
 	}
 	if err := conn.SetDeadline(time.Time{}); err != nil {
@@ -312,6 +309,12 @@ func (s *server) join(conn net.Conn) (*peer, error) {
 
 func (s *server) writeLoop(p *peer) {
 	defer s.wg.Done()
+	p.write(s.drop)
+}
+
+// write sends the queued messages until the queue closes, then closes the
+// connection. A failed write calls drop once.
+func (p *peer) write(drop func(*peer)) {
 	defer p.conn.Close()
 	failed := false
 	for msg := range p.out {
@@ -323,7 +326,7 @@ func (s *server) writeLoop(p *peer) {
 			failed = err != nil
 		}
 		if failed {
-			s.drop(p)
+			drop(p)
 		}
 	}
 }
@@ -455,6 +458,26 @@ func (s *server) removeSocket() {
 	if err := os.Remove(s.cfg.Socket); err != nil && !errors.Is(err, os.ErrNotExist) {
 		s.log.Warn("remove the socket", "err", err)
 	}
+}
+
+// listen serves a socket with mode 0600 at path.
+func listen(ctx context.Context, path string) (net.Listener, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("holder socket: %w", err)
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("holder socket: %w", err)
+	}
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "unix", path)
+	if err != nil {
+		return nil, fmt.Errorf("holder socket: %w", err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		_ = ln.Close() // the chmod error is the one to report
+		return nil, fmt.Errorf("holder socket: %w", err)
+	}
+	return ln, nil
 }
 
 // waitExit converts the result of Wait.

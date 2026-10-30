@@ -22,10 +22,14 @@ import (
 // fakeTUI prints, reads lines, and answers a few commands.
 const fakeTUI = `stty -echo 2>/dev/null; echo "tui ready"; while IFS= read -r l; do case "$l" in exit) exit 7;; size) stty size;; *) echo "echo:$l";; esac; done`
 
-// TestMain runs the test binary as a holder when the visor starts one.
+// TestMain runs the test binary as a holder when the visor starts one, or
+// as a visor process that a test kills.
 func TestMain(m *testing.M) {
 	if len(os.Args) == 3 && os.Args[1] == "hold" {
 		os.Exit(runTestHolder(os.Args[2]))
+	}
+	if len(os.Args) == 2 && os.Args[1] == "visor-child" {
+		os.Exit(runChildVisor())
 	}
 	os.Exit(m.Run())
 }
@@ -200,7 +204,7 @@ func TestPTYExitWhileVisorDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	sock := filepath.Join(home, "holders", s.ID+".sock")
-	c, err := holder.Dial(t.Context(), sock)
+	c, err := holder.Dial(t.Context(), sock, holder.Cursor{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,11 +361,15 @@ func shortHome(t *testing.T) string {
 }
 
 func killHolders(home string) {
-	socks, _ := filepath.Glob(filepath.Join(home, "holders", "*.sock")) //nolint:errcheck // a fixed pattern
+	socks, _ := filepath.Glob(filepath.Join(home, "*", "*.sock")) //nolint:errcheck // a fixed pattern
 	for _, sock := range socks {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		if c, err := holder.Dial(ctx, sock); err == nil {
-			_ = c.Kill() // test cleanup
+		if c, err := holder.Dial(ctx, sock, holder.Cursor{}); err == nil {
+			if c.Hello().Mode == holder.ModeWire {
+				_ = c.Call(holder.Call{ID: 1, Op: holder.OpClose}) // test cleanup
+			} else {
+				_ = c.Kill() // test cleanup
+			}
 			for {
 				if m, err := c.Read(); err != nil || m.Type == holder.MsgExit {
 					break

@@ -64,7 +64,7 @@ func (a *app) hookCommand() *cli.Command {
 }
 
 func (a *app) holdCommand() *cli.Command {
-	return &cli.Command{Name: "hold", Usage: "Hold the terminal of one session (the visor starts it)", ArgsUsage: "<session>", Hidden: true, Action: a.hold}
+	return &cli.Command{Name: "hold", Usage: "Hold the process of one session (the visor starts it)", ArgsUsage: "<session>", Hidden: true, Action: a.hold}
 }
 
 // hold reads the holder config from stdin and runs the holder until its

@@ -12,6 +12,7 @@ import (
 
 	agentwire "github.com/trebi-ai/agent-wire"
 
+	"github.com/trebi-ai/agent-visor/holder"
 	"github.com/trebi-ai/agent-visor/internal/store"
 )
 
@@ -51,6 +52,8 @@ type Event struct {
 	Harness string `json:"harness,omitempty"`
 	// Data is the payload of a hook event, or the output of a script.
 	Data json.RawMessage `json:"data,omitempty"`
+	// src is the holder run and sequence of an event from a wire holder.
+	src holder.Cursor
 }
 
 // Tool is one tool call, as agent-wire reports it.
@@ -309,7 +312,9 @@ func (l *eventLog) append(ctx context.Context, e Event) (Event, error) {
 	if err != nil {
 		return Event{}, fmt.Errorf("encode event: %w", err)
 	}
-	if err := l.st.AppendEvent(context.WithoutCancel(ctx), store.EventRow{Seq: e.Seq, Session: e.Session, Data: data}); err != nil {
+	if err := l.st.AppendEvent(context.WithoutCancel(ctx), store.EventRow{
+		Seq: e.Seq, Session: e.Session, Data: data, Source: e.src.Run, SourceSeq: e.src.Seq,
+	}); err != nil {
 		return Event{}, err
 	}
 	l.seq = e.Seq

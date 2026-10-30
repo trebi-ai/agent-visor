@@ -22,6 +22,10 @@ type EventRow struct {
 	Seq     uint64
 	Session string
 	Data    []byte
+	// Source and SourceSeq name the holder run and the holder sequence of
+	// an event that came from a holder.
+	Source    string
+	SourceSeq uint64
 }
 
 // Document kinds.
@@ -31,7 +35,7 @@ const (
 	KindWorkdir   = "workdir"
 	KindSession   = "session"
 	KindHarness   = "harness"
-	schemaVersion = 1
+	schemaVersion = 2
 )
 
 // ErrNotFound reports a missing document.
@@ -119,8 +123,12 @@ func (s *Store) Delete(ctx context.Context, kind, id string) error {
 
 // AppendEvent writes one event with its sequence number.
 func (s *Store) AppendEvent(ctx context.Context, e EventRow) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO events(seq, session, data) VALUES(?, ?, ?)`,
-		int64(e.Seq), e.Session, e.Data) //nolint:gosec // a sequence number never reaches 2^63
+	var src, srcSeq any
+	if e.Source != "" {
+		src, srcSeq = e.Source, int64(e.SourceSeq) //nolint:gosec // a sequence number never reaches 2^63
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO events(seq, session, data, src_run, src_seq) VALUES(?, ?, ?, ?, ?)`,
+		int64(e.Seq), e.Session, e.Data, src, srcSeq) //nolint:gosec // a sequence number never reaches 2^63
 	if err != nil {
 		return fmt.Errorf("append event %d: %w", e.Seq, err)
 	}
@@ -134,6 +142,24 @@ func (s *Store) LastSeq(ctx context.Context) (uint64, error) {
 		return 0, fmt.Errorf("last seq: %w", err)
 	}
 	return uint64(seq.Int64), nil //nolint:gosec // the column holds only positive values
+}
+
+// LastSource gives the holder run and the holder sequence of the last
+// event of a session that came from a holder. An empty run means none.
+func (s *Store) LastSource(ctx context.Context, session string) (string, uint64, error) {
+	var (
+		run sql.NullString
+		seq sql.NullInt64
+	)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT src_run, src_seq FROM events WHERE session = ? AND src_run IS NOT NULL ORDER BY seq DESC LIMIT 1`, session).Scan(&run, &seq)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", 0, nil
+	}
+	if err != nil {
+		return "", 0, fmt.Errorf("last source of %s: %w", session, err)
+	}
+	return run.String, uint64(seq.Int64), nil //nolint:gosec // the column holds only positive values
 }
 
 // Events reads the events with after < seq <= until, in order, at most limit
@@ -185,10 +211,17 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&v); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
-	if v >= schemaVersion {
-		return nil
+	for ; v < schemaVersion; v++ {
+		if _, err := s.db.ExecContext(ctx, migrations[v]); err != nil {
+			return fmt.Errorf("migrate to %d: %w", v+1, err)
+		}
 	}
-	_, err := s.db.ExecContext(ctx, `
+	return nil
+}
+
+// migrations[i] moves the schema from version i to i+1.
+var migrations = [schemaVersion]string{ //nolint:gochecknoglobals // a fixed table
+	`
 CREATE TABLE IF NOT EXISTS docs (
 	kind TEXT NOT NULL,
 	id   TEXT NOT NULL,
@@ -201,11 +234,11 @@ CREATE TABLE IF NOT EXISTS events (
 	data    BLOB NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_session ON events(session, seq);
-PRAGMA user_version = 1;`)
-	if err != nil {
-		return fmt.Errorf("migrate: %w", err)
-	}
-	return nil
+PRAGMA user_version = 1;`,
+	`
+ALTER TABLE events ADD COLUMN src_run TEXT;
+ALTER TABLE events ADD COLUMN src_seq INTEGER;
+PRAGMA user_version = 2;`,
 }
 
 func placeholders(n int) string {

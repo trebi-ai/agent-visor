@@ -22,6 +22,7 @@ import (
 	agentwire "github.com/trebi-ai/agent-wire"
 
 	"github.com/trebi-ai/agent-visor/harness"
+	"github.com/trebi-ai/agent-visor/holder"
 	"github.com/trebi-ai/agent-visor/internal/store"
 	"github.com/trebi-ai/agent-visor/workdir"
 )
@@ -41,8 +42,8 @@ type Options struct {
 	Env map[string]string
 	// Backends are extra backends, for example an optional host of sessions.
 	Backends []Backend
-	// HolderCommand runs a holder; the visor adds the session id. Empty is
-	// this program with the argument hold.
+	// HolderCommand runs a holder for a pty or a wire session; the visor
+	// adds the session id. Empty is this program with the argument hold.
 	HolderCommand []string
 	// HookCommand runs a vendor hook; the visor adds the harness name. Empty
 	// is this program with the home and the argument hook.
@@ -51,7 +52,8 @@ type Options struct {
 	// uses the harness program with ExtraArgs and has no resume command.
 	TerminalCommand TerminalCommand
 	// Drivers replace agent-wire drivers, for tests (for example the fake
-	// harness with a script).
+	// harness with a script). A wire session of such a harness runs in the
+	// visor process, not in a holder, so it does not survive a restart.
 	Drivers map[string]agentwire.Driver
 	// Harness configures the harness inventory. The visor sets its InUse,
 	// OnChange, and Logger.
@@ -165,10 +167,10 @@ func New(ctx context.Context, o Options) (*Visor, error) {
 		v.log.Warn("reconcile the agent-wire ledger", "err", err)
 	}
 	v.harnesses = harness.New(o.Home, st, v.wire, v.harnessOptions())
-	v.backends[KindWire] = newWireBackend(v.wire, o.Home)
 	if exe, err := os.Executable(); err == nil && len(o.HolderCommand) == 0 {
 		o.HolderCommand = []string{exe, "hold"}
 	}
+	v.backends[KindWire] = newWireBackend(v.wire, o, v.cursor, o.Logger.With("source", "wire"))
 	v.backends[KindPTY] = newPTYBackend(o.Home, o.HolderCommand, o.TerminalCommand, o.Logger.With("source", "pty"))
 	for _, b := range o.Backends {
 		v.backends[b.Kind()] = b
@@ -228,6 +230,7 @@ func (v *Visor) Start(ctx context.Context, spec StartSpec) (Session, error) {
 	var prompt *Input
 	if spec.Prompt != "" {
 		prompt = &Input{Text: spec.Prompt}
+		v.emit(ctx, rec, Event{Type: EventUser, Text: prompt.Text, Input: true})
 	}
 	if err := v.launch(ctx, rec, b, spec, w, spec.ResumeID != "", prompt); err != nil {
 		return Session{}, err
@@ -271,7 +274,7 @@ func (v *Visor) Send(ctx context.Context, id string, in Input) (Delivery, error)
 		return "", err
 	}
 	if h == nil {
-		return DeliveryPrompted, v.resume(ctx, rec, &in)
+		return DeliveryPrompted, v.resume(ctx, rec, &in, true)
 	}
 	v.emit(ctx, rec, Event{Type: EventUser, Text: in.Text, Input: true})
 	// Move first: a fast result can come before Send returns.
@@ -279,6 +282,9 @@ func (v *Visor) Send(ctx context.Context, id string, in Input) (Delivery, error)
 		return "", err
 	}
 	d, err := h.Send(ctx, in)
+	if errors.Is(err, errHolderEnding) {
+		return DeliveryPrompted, v.resumeAfterEnd(ctx, rec, in)
+	}
 	if err != nil {
 		v.moveIf(ctx, rec, StateRunning, StateIdle)
 		return "", err
@@ -407,8 +413,9 @@ func (v *Visor) RemoveWorkdir(ctx context.Context, id string, force bool) error 
 	return mapWorkdirErr(v.workdirs.Remove(ctx, id, force))
 }
 
-// Close stops the visor. A session in a turn becomes lost, and an idle wire
-// session becomes suspended, so the next visor resumes it.
+// Close stops the visor. A session in a holder keeps running. Of the other
+// sessions, a session in a turn becomes lost, and an idle wire session
+// becomes suspended, so the next visor resumes it.
 func (v *Visor) Close(ctx context.Context) error {
 	v.mu.Lock()
 	if v.closed {
@@ -523,14 +530,15 @@ func (v *Visor) restart(rec *record) {
 		if in.Text == "" {
 			in = nil
 		}
-		if err := v.resume(v.ctx, rec, in); err != nil {
+		if err := v.resume(v.ctx, rec, in, true); err != nil {
 			v.log.Warn("resume a lost session", "session_id", rec.s.ID, "err", err)
 		}
 	}()
 }
 
-// resume starts the process of a suspended or lost session again.
-func (v *Visor) resume(ctx context.Context, rec *record, in *Input) error {
+// resume starts the process of a suspended or lost session again. echo
+// writes the user event of the input.
+func (v *Visor) resume(ctx context.Context, rec *record, in *Input, echo bool) error {
 	v.mu.Lock()
 	s := rec.s
 	v.mu.Unlock()
@@ -552,7 +560,24 @@ func (v *Visor) resume(ctx context.Context, rec *record, in *Input) error {
 	if err := v.setState(ctx, rec, StateStarting); err != nil {
 		return err
 	}
+	if in != nil && echo {
+		v.emit(ctx, rec, Event{Type: EventUser, Text: in.Text, Input: true})
+	}
 	return v.launch(ctx, rec, b, spec, w, true, in)
+}
+
+// resumeAfterEnd waits until the holder that ends at idle is gone, then
+// resumes the session with the input in a new holder.
+func (v *Visor) resumeAfterEnd(ctx context.Context, rec *record, in Input) error {
+	v.mu.Lock()
+	done := rec.done
+	v.mu.Unlock()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return v.resume(ctx, rec, &in, false)
 }
 
 // launch starts the process of a session in its backend.
@@ -566,9 +591,6 @@ func (v *Visor) launch(ctx context.Context, rec *record, b Backend, spec StartSp
 	l := Launch{
 		Session: s, Spec: spec, Dir: s.WorkingDir, Resume: resume, Prompt: prompt, Binary: hl.Binary, Home: hl.Home,
 		Env: mergeEnv(v.opts.Env, hl.Env, spec.Env, visorEnv(s, w, v.opts.Socket)),
-	}
-	if prompt != nil {
-		v.emit(ctx, rec, Event{Type: EventUser, Text: prompt.Text, Input: true})
 	}
 	var h Handle
 	if err == nil {
@@ -615,8 +637,15 @@ func (v *Visor) attach(rec *record, h Handle) {
 	go func() {
 		defer v.wg.Done()
 		defer close(done)
+		held, _ := h.(*heldWire)
 		for e := range h.Events() {
 			v.observe(rec, e)
+			if held != nil {
+				held.ack(e)
+			}
+		}
+		if held != nil {
+			held.release()
 		}
 		v.ended(rec, h)
 	}()
@@ -630,7 +659,9 @@ func (v *Visor) observe(rec *record, e Event) {
 		v.update(ctx, rec, func(s *Session) { s.VendorID = cmp.Or(e.VendorID, s.VendorID) })
 	case EventRequest:
 		if e.Request != nil {
-			v.update(ctx, rec, func(s *Session) { s.Pending = append(s.Pending, *e.Request) })
+			v.update(ctx, rec, func(s *Session) {
+				s.Pending = append(slices.DeleteFunc(s.Pending, func(r Request) bool { return r.ID == e.Request.ID }), *e.Request)
+			})
 		}
 	case EventResult:
 		v.update(ctx, rec, func(s *Session) {
@@ -689,6 +720,9 @@ func (v *Visor) ended(rec *record, h Handle) {
 		return
 	}
 	to := rec.ending
+	if held, ok := h.(*heldWire); ok && to == "" {
+		to = held.endState()
+	}
 	if to == "" && rec.handover == KindWire {
 		rec.s.Kind, rec.s.ExitCode, rec.handover = KindWire, nil, ""
 		to = StateSuspended
@@ -913,6 +947,12 @@ func (v *Visor) eventSessions(f Filter) []string {
 		}
 	}
 	return ids
+}
+
+// cursor gives the last stored holder event of a session.
+func (v *Visor) cursor(ctx context.Context, session string) (holder.Cursor, error) {
+	run, seq, err := v.st.LastSource(ctx, session)
+	return holder.Cursor{Run: run, Seq: seq}, err
 }
 
 func (v *Visor) caps(s Session) Caps {

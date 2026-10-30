@@ -34,5 +34,10 @@
 - Mark the user event that the visor writes for a send or a first prompt with `input: true`. A vendor echo has no mark.
 - Add `StartSpec.Binary`: the harness program. It wins over the visor install in `Launch.Binary`.
 - The wire backend writes the agent-wire frame log to `sessions/<id>/frames.ndjson` with mode 0600.
+- Run each wire session in a wire holder (`hold` reads the mode from its config), so a turn lives through a visor restart, a crash, or an upgrade. The holder owns the stdio pipes, the open permission requests, and the agent-wire ledger (`sessions/<id>/ledger.json`). It numbers its events. The visor acks each event after it stores it, and a holder sends the events after the last ack again, so no event is lost or stored twice. `Caps.Survives` is true for the wire backend.
+- The wire holder ends when its session is idle, and the session becomes `suspended`. The next send starts a holder of the current build, which resumes the vendor session. A holder that ends with no visor keeps the events that the visor did not store in `wire/<id>.spool`, and the next visor reads them.
+- A harness with a driver in `Options.Drivers` runs its wire sessions in the visor process, as before.
+- The holder protocol is version 2. It adds the wire mode and the event, ack, call, and reply messages. `holder.Dial` takes a `holder.Cursor` and speaks to holders of version 1 and 2.
+- The store schema is version 2. An event keeps the holder run and sequence that it came from.
 - Fix: an answer that returns after the end of the turn no longer moves an idle session back to running.
 - Fix: a PTY session that ends while the holder has dropped the visor gets its last output from `pty.log`.
