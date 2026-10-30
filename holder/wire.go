@@ -77,8 +77,10 @@ type wireServer struct {
 	// sending counts the sends in progress; held means that a held prompt
 	// starts the next turn.
 	sending int
-	held    bool
-	turned  bool
+	// calls counts the calls that did not reply yet.
+	calls  int
+	held   bool
+	turned bool
 	// ending refuses new calls; idle means that the end is the close at
 	// idle.
 	ending   bool
@@ -296,6 +298,9 @@ func (s *wireServer) serve(conn net.Conn) {
 		case MsgCall:
 			var c Call
 			if json.Unmarshal(data, &c) == nil {
+				s.mu.Lock()
+				s.calls++
+				s.mu.Unlock()
 				s.wg.Add(1)
 				go s.call(p, c)
 			}
@@ -358,6 +363,7 @@ func (s *wireServer) call(p *peer, c Call) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.calls--
 	if s.peer == p {
 		s.sendLocked(p, MsgReply, r)
 	}
@@ -453,6 +459,7 @@ func (s *wireServer) ack(seq uint64) {
 // rest in the spool. The exit file comes last, so a client that finds no
 // socket finds the spool.
 func (s *wireServer) finish() {
+	s.waitCalls()
 	s.mu.Lock()
 	exit := Exit{Idle: s.idle, Last: s.seq, Error: s.exitErr}
 	if s.exitCode != nil {
@@ -495,6 +502,25 @@ func (s *wireServer) finish() {
 		s.log.Warn("a peer did not take the exit")
 	}
 	s.log.Info("session ended", "idle", exit.Idle, "code", exit.Code)
+}
+
+// waitCalls waits a short time for the replies of the open calls. A send can
+// end the vendor process, and its reply must go out before the exit.
+func (s *wireServer) waitCalls() {
+	deadline := time.Now().Add(ackWait)
+	for {
+		s.mu.Lock()
+		open := s.calls
+		s.mu.Unlock()
+		if open == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			s.log.Warn("a call did not reply before the exit", "calls", open)
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // waitAcks waits until a client stored each event. With no client, it

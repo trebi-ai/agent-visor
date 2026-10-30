@@ -2,12 +2,14 @@ package holder
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	agentwire "github.com/trebi-ai/agent-wire"
 )
@@ -105,6 +107,56 @@ func TestWireSpoolKeepsUnackedEvents(t *testing.T) {
 	}
 	if st, err := os.Stat(cfg.Spool); err != nil || st.Mode().Perm() != 0o600 {
 		t.Fatalf("spool mode: %v %v", st, err)
+	}
+}
+
+// lateSend returns from a prompt after the vendor process ended.
+type lateSend struct{ agentwire.FakeDriver }
+
+func (d lateSend) Start(ctx context.Context, req agentwire.StartRequest) (agentwire.Session, error) {
+	s, err := d.FakeDriver.Start(ctx, req)
+	return lateSession{s}, err
+}
+
+type lateSession struct{ agentwire.Session }
+
+func (s lateSession) Prompt(ctx context.Context, p agentwire.Prompt) error {
+	err := s.Session.Prompt(ctx, p)
+	time.Sleep(300 * time.Millisecond)
+	return err
+}
+
+// TestWireReplyBeforeExit checks that a send gets its reply when the vendor
+// process ends before the send returns.
+func TestWireReplyBeforeExit(t *testing.T) {
+	t.Parallel()
+	cfg := wireConfig(t, "w3")
+	cfg.Wire.Drivers = map[string]agentwire.Driver{"fake": lateSend{agentwire.FakeDriver{Script: agentwire.DefaultFakeScript}}}
+	errc := make(chan error, 1)
+	go func() { errc <- Run(t.Context(), cfg) }()
+	c := dial(t, cfg.Socket)
+	defer c.Close()
+	if err := c.Call(Call{ID: 1, Op: OpSend, Prompt: &agentwire.Prompt{Text: "go"}}); err != nil {
+		t.Fatal(err)
+	}
+	var reply *Reply
+	var out bytes.Buffer
+	readUntil(t, c, &out, func(m Msg) bool {
+		switch m.Type {
+		case MsgEvent:
+			if err := c.Ack(m.Event.Seq); err != nil {
+				t.Error(err)
+			}
+		case MsgReply:
+			reply = &m.Reply
+		}
+		return m.Type == MsgExit
+	})
+	if reply == nil || reply.Error != "" || reply.Delivery != agentwire.DeliveryPrompted {
+		t.Fatalf("reply before the exit: %+v", reply)
+	}
+	if err := <-errc; err != nil {
+		t.Fatal(err)
 	}
 }
 

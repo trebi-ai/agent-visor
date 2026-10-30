@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.2 (2026-10-30)
+
+- Fix: a wire holder sends the reply of an open call before its exit. Before, a send that ended the vendor process could lose its reply, and the visor reported "has no process".
+
 ## v0.1.1 (2026-10-30)
 
 The first release. v0.1.0 has the same API, but its workdir code fails with git before 2.31. Use v0.1.1.
