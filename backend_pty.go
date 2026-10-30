@@ -476,7 +476,7 @@ func (h *ptyHandle) join(a *AttachStream, o AttachOptions, title string) error {
 	}
 	h.subs[a] = struct{}{}
 	a.queue = []Frame{
-		{Type: FrameAttached, Source: KindPTY, Cols: h.size.Cols, Rows: h.size.Rows, Writable: true, Resizable: true, Title: title},
+		{Type: FrameAttached, View: ViewTerminal, Source: KindPTY, Cols: h.size.Cols, Rows: h.size.Rows, Writable: true, Resizable: true, Title: title},
 		{Op: OpSnapshot, Data: bytes.Clone(h.ring)},
 	}
 	take := h.lease == nil && o.Cols > 0 && o.Rows > 0

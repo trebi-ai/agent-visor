@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -82,13 +81,14 @@ type Frame struct {
 	Op   FrameOp `json:"-"`
 	Seq  uint64  `json:"-"`
 	Data []byte  `json:"-"`
-	// Source, Writable, Resizable, and Title belong to attached.
-	Source    Kind   `json:"source,omitempty"`
-	Cols      int    `json:"cols,omitempty"`
-	Rows      int    `json:"rows,omitempty"`
-	Writable  bool   `json:"writable,omitempty"`
-	Resizable bool   `json:"resizable,omitempty"`
-	Title     string `json:"title,omitempty"`
+	// View, Source, Writable, Resizable, and Title belong to attached.
+	View      AttachView `json:"view,omitempty"`
+	Source    Kind       `json:"source,omitempty"`
+	Cols      int        `json:"cols,omitempty"`
+	Rows      int        `json:"rows,omitempty"`
+	Writable  bool       `json:"writable,omitempty"`
+	Resizable bool       `json:"resizable,omitempty"`
+	Title     string     `json:"title,omitempty"`
 	// Holder belongs to lease.
 	Holder LeaseHolder `json:"holder,omitempty"`
 	// From, To, and Turns belong to turns.
@@ -105,6 +105,8 @@ type Frame struct {
 // AttachStream is one client on the terminal or the chat of a session. One
 // goroutine calls Recv; others can call Handle, Input, and Close.
 type AttachStream struct {
+	// remote is set on an attachment of a Client.
+	remote  *remoteAttach
 	view    AttachView
 	session string
 	v       *Visor
@@ -307,7 +309,7 @@ func (v *Visor) Attach(_ context.Context, id string, o AttachOptions) (*AttachSt
 		if !caps.Structured {
 			return nil, fmt.Errorf("%w: session %s has no chat", ErrUnsupported, id)
 		}
-		a.queue = []Frame{{Type: FrameAttached, Source: s.Kind, Writable: true, Title: s.Title}}
+		a.queue = []Frame{{Type: FrameAttached, View: ViewChat, Source: s.Kind, Writable: true, Title: s.Title}}
 		if s.State == StateExited {
 			a.endAt = s.Seq
 			if o.After >= s.Seq {
@@ -328,6 +330,9 @@ func (a *AttachStream) View() AttachView { return a.view }
 // Recv waits for the next frame to the client. After the ended frame, it
 // returns io.EOF.
 func (a *AttachStream) Recv(ctx context.Context) (Frame, error) {
+	if a.remote != nil {
+		return a.remote.recv(ctx)
+	}
 	if a.view == ViewChat {
 		return a.recvChat(ctx)
 	}
@@ -349,8 +354,12 @@ func (a *AttachStream) Recv(ctx context.Context) (Frame, error) {
 }
 
 // Handle applies one frame from the client. A failed frame also queues an
-// error frame, so a server can ignore each error except ErrClosed.
+// error frame, so a server can ignore each error except ErrClosed. On a
+// Client, Handle only sends the frame, and a failure comes as an error frame.
 func (a *AttachStream) Handle(ctx context.Context, f ClientFrame) error {
+	if a.remote != nil {
+		return a.remote.send(ctx, f)
+	}
 	a.mu.Lock()
 	closed := a.closed
 	a.mu.Unlock()
@@ -371,6 +380,9 @@ func (a *AttachStream) Input(ctx context.Context, p []byte) error {
 
 // Close ends the attachment. It gives back the size lease.
 func (a *AttachStream) Close() error {
+	if a.remote != nil {
+		return a.remote.close()
+	}
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -647,21 +659,7 @@ func mergeTurn(turns []Turn, t Turn) []Turn {
 }
 
 func errorFrame(err error) Frame {
-	code := "failed"
-	switch {
-	case errors.Is(err, ErrInvalid):
-		code = "invalid"
-	case errors.Is(err, ErrUnsupported):
-		code = "unsupported"
-	case errors.Is(err, ErrState):
-		code = "state"
-	case errors.Is(err, ErrBusy):
-		code = "busy"
-	case errors.Is(err, ErrNotFound):
-		code = "not_found"
-	case errors.Is(err, ErrClosed):
-		code = "closed"
-	}
+	code, _ := errorCode(err)
 	return Frame{Type: FrameError, Code: code, Message: err.Error()}
 }
 

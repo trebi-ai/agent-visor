@@ -1,0 +1,27 @@
+[
+  {
+    "type": "attach",
+    "view": "terminal",
+    "cols": 120,
+    "rows": 40
+  },
+  {
+    "type": "ack",
+    "seq": 65536
+  },
+  {
+    "type": "control",
+    "cols": 100,
+    "rows": 30
+  },
+  {
+    "type": "release"
+  },
+  {
+    "type": "send",
+    "text": "Also run the linter."
+  },
+  {
+    "type": "interrupt"
+  }
+]

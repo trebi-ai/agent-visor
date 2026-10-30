@@ -1,0 +1,49 @@
+[
+  {
+    "type": "attached",
+    "view": "terminal",
+    "source": "pty",
+    "cols": 120,
+    "rows": 40,
+    "writable": true,
+    "resizable": true,
+    "title": "app"
+  },
+  {
+    "type": "resized",
+    "cols": 100,
+    "rows": 30
+  },
+  {
+    "type": "lease",
+    "holder": "you"
+  },
+  {
+    "type": "turns",
+    "from": 40,
+    "to": 44,
+    "turns": [
+      {
+        "seq": 41,
+        "role": "user",
+        "at": "2026-10-30T12:00:00Z",
+        "text": "Fix the test."
+      },
+      {
+        "seq": 44,
+        "role": "result",
+        "at": "2026-10-30T12:00:00Z",
+        "text": "Done."
+      }
+    ]
+  },
+  {
+    "type": "ended",
+    "reason": "exited"
+  },
+  {
+    "type": "error",
+    "code": "unsupported",
+    "message": "agentvisor: unsupported: the chat view takes no control frame"
+  }
+]

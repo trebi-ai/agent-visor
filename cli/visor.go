@@ -18,6 +18,7 @@ import (
 	"github.com/urfave/cli/v3"
 
 	agentvisor "github.com/trebi-ai/agent-visor"
+	"github.com/trebi-ai/agent-visor/holder"
 )
 
 // statusView is the output of status.
@@ -63,7 +64,22 @@ func (a *app) hookCommand() *cli.Command {
 }
 
 func (a *app) holdCommand() *cli.Command {
-	return &cli.Command{Name: "hold", Usage: "Hold the terminal of one session (the visor starts it)", Hidden: true, Action: a.notAvailable}
+	return &cli.Command{Name: "hold", Usage: "Hold the terminal of one session (the visor starts it)", ArgsUsage: "<session>", Hidden: true, Action: a.hold}
+}
+
+// hold reads the holder config from stdin and runs the holder until its
+// process ends.
+func (a *app) hold(ctx context.Context, cmd *cli.Command) error {
+	if err := args(cmd, 1, "<session>"); err != nil {
+		return err
+	}
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	c, err := holder.ReadConfig(a.opts.Stdin, cmd.Args().First())
+	if err != nil {
+		return err
+	}
+	return holder.Run(ctx, c)
 }
 
 // serve opens the socket first, so a second serve fails before it opens the

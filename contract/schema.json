@@ -20,6 +20,35 @@
       ],
       "type": "object"
     },
+    "ClientFrame": {
+      "properties": {
+        "after": {
+          "type": "integer"
+        },
+        "cols": {
+          "type": "integer"
+        },
+        "rows": {
+          "type": "integer"
+        },
+        "seq": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "view": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
     "Event": {
       "properties": {
         "at": {
@@ -92,6 +121,132 @@
         "seq",
         "at",
         "type"
+      ],
+      "type": "object"
+    },
+    "Frame": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "cols": {
+          "type": "integer"
+        },
+        "from": {
+          "type": "integer"
+        },
+        "holder": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "resizable": {
+          "type": "boolean"
+        },
+        "rows": {
+          "type": "integer"
+        },
+        "source": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "to": {
+          "type": "integer"
+        },
+        "turns": {
+          "items": {
+            "$ref": "#/$defs/Turn"
+          },
+          "type": "array"
+        },
+        "type": {
+          "type": "string"
+        },
+        "view": {
+          "type": "string"
+        },
+        "writable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
+    "Harness": {
+      "properties": {
+        "auth": {
+          "type": "string"
+        },
+        "auth_mode": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "env_keys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "installable": {
+          "type": "boolean"
+        },
+        "installed": {
+          "type": "boolean"
+        },
+        "installs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "latest": {
+          "type": "string"
+        },
+        "limits": {
+          "$ref": "#/$defs/Limits"
+        },
+        "login": {
+          "$ref": "#/$defs/Login"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/Model"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "supported": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "installed",
+        "installable",
+        "supported",
+        "auth_mode",
+        "auth"
       ],
       "type": "object"
     },
@@ -271,6 +426,42 @@
       },
       "type": "object"
     },
+    "Login": {
+      "properties": {
+        "await_code": {
+          "type": "boolean"
+        },
+        "code": {
+          "type": "string"
+        },
+        "done": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string"
+        },
+        "harness": {
+          "type": "string"
+        },
+        "hint": {
+          "type": "string"
+        },
+        "in_app": {
+          "type": "boolean"
+        },
+        "started_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "harness"
+      ],
+      "type": "object"
+    },
     "MCPServer": {
       "properties": {
         "args": {
@@ -303,6 +494,32 @@
       },
       "required": [
         "name"
+      ],
+      "type": "object"
+    },
+    "Model": {
+      "properties": {
+        "default": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        },
+        "efforts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
       ],
       "type": "object"
     },
@@ -703,6 +920,32 @@
       ],
       "type": "object"
     },
+    "Turn": {
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        },
+        "tool": {
+          "$ref": "#/$defs/Tool"
+        }
+      },
+      "required": [
+        "seq",
+        "role",
+        "at"
+      ],
+      "type": "object"
+    },
     "Usage": {
       "properties": {
         "cache_creation": {
@@ -813,6 +1056,31 @@
       ],
       "type": "object"
     },
+    "authRequest": {
+      "properties": {
+        "mode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "type": "object"
+    },
+    "envRequest": {
+      "properties": {
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "env"
+      ],
+      "type": "object"
+    },
     "errorBody": {
       "properties": {
         "error": {
@@ -838,6 +1106,25 @@
         "message"
       ],
       "type": "object"
+    },
+    "handoverRequest": {
+      "properties": {
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "to"
+      ],
+      "type": "object"
+    },
+    "versionRequest": {
+      "properties": {
+        "version": {
+          "type": "string"
+        }
+      },
+      "type": "object"
     }
   },
   "$id": "agent-visor/1",
@@ -845,6 +1132,18 @@
   "properties": {
     "answer": {
       "$ref": "#/$defs/answerRequest"
+    },
+    "attach_client_frames": {
+      "items": {
+        "$ref": "#/$defs/ClientFrame"
+      },
+      "type": "array"
+    },
+    "attach_frames": {
+      "items": {
+        "$ref": "#/$defs/Frame"
+      },
+      "type": "array"
     },
     "error": {
       "$ref": "#/$defs/errorBody"
@@ -854,6 +1153,21 @@
         "$ref": "#/$defs/Event"
       },
       "type": "array"
+    },
+    "handover": {
+      "$ref": "#/$defs/handoverRequest"
+    },
+    "harness": {
+      "$ref": "#/$defs/Harness"
+    },
+    "harness_auth": {
+      "$ref": "#/$defs/authRequest"
+    },
+    "harness_env": {
+      "$ref": "#/$defs/envRequest"
+    },
+    "harness_version": {
+      "$ref": "#/$defs/versionRequest"
     },
     "hello": {
       "$ref": "#/$defs/Hello"
@@ -875,6 +1189,9 @@
     },
     "input": {
       "$ref": "#/$defs/Input"
+    },
+    "login": {
+      "$ref": "#/$defs/Login"
     },
     "project": {
       "$ref": "#/$defs/Project"

@@ -11,21 +11,6 @@ import (
 	agentvisor "github.com/trebi-ai/agent-visor"
 )
 
-// harnessVisor is the harness API of the visor. A visor connection that
-// does not have it makes the harness commands say "not available yet".
-type harnessVisor interface {
-	Harnesses(ctx context.Context) ([]agentvisor.Harness, error)
-	Harness(ctx context.Context, name string) (agentvisor.Harness, error)
-	InstallHarness(ctx context.Context, name, version string) (agentvisor.Harness, error)
-	UpdateHarness(ctx context.Context, name, version string) (agentvisor.Harness, error)
-	SetHarnessAuth(ctx context.Context, name string, mode agentvisor.AuthMode) (agentvisor.Harness, error)
-	LoginHarness(ctx context.Context, name string) (agentvisor.Login, error)
-	LogoutHarness(ctx context.Context, name string) error
-	HarnessModels(ctx context.Context, name string) ([]agentvisor.Model, error)
-}
-
-var _ harnessVisor = (*agentvisor.Visor)(nil)
-
 func (a *app) harnessCommand() *cli.Command {
 	name := "<harness>"
 	version := &cli.StringFlag{Name: "version", Usage: "the version (default: the latest release)"}
@@ -48,19 +33,8 @@ func (a *app) harnessCommand() *cli.Command {
 	}
 }
 
-// withHarness dials the visor and runs fn with its harness API.
-func (a *app) withHarness(ctx context.Context, cmd *cli.Command, fn func(h harnessVisor) error) error {
-	return a.with(ctx, cmd, func(v Visor) error {
-		h, ok := v.(harnessVisor)
-		if !ok {
-			return a.notAvailable(ctx, cmd)
-		}
-		return fn(h)
-	})
-}
-
 func (a *app) harnessLs(ctx context.Context, cmd *cli.Command) error {
-	return a.withHarness(ctx, cmd, func(h harnessVisor) error {
+	return a.with(ctx, cmd, func(h Visor) error {
 		hs, err := h.Harnesses(ctx)
 		if err != nil {
 			return err
@@ -81,7 +55,7 @@ func (a *app) harnessShow(ctx context.Context, cmd *cli.Command) error {
 	if err := args(cmd, 1, "<harness>"); err != nil {
 		return err
 	}
-	return a.withHarness(ctx, cmd, func(h harnessVisor) error {
+	return a.with(ctx, cmd, func(h Visor) error {
 		x, err := h.Harness(ctx, cmd.Args().First())
 		if err != nil {
 			return err
@@ -94,7 +68,7 @@ func (a *app) harnessModels(ctx context.Context, cmd *cli.Command) error {
 	if err := args(cmd, 1, "<harness>"); err != nil {
 		return err
 	}
-	return a.withHarness(ctx, cmd, func(h harnessVisor) error {
+	return a.with(ctx, cmd, func(h Visor) error {
 		ms, err := h.HarnessModels(ctx, cmd.Args().First())
 		if err != nil {
 			return err
@@ -115,7 +89,7 @@ func (a *app) harnessInstall(ctx context.Context, cmd *cli.Command) error {
 	if err := args(cmd, 1, "<harness>"); err != nil {
 		return err
 	}
-	return a.withHarness(ctx, cmd, func(h harnessVisor) error {
+	return a.with(ctx, cmd, func(h Visor) error {
 		x, err := h.InstallHarness(ctx, cmd.Args().First(), cmd.String("version"))
 		if err != nil {
 			return err
@@ -128,7 +102,7 @@ func (a *app) harnessUpdate(ctx context.Context, cmd *cli.Command) error {
 	if err := args(cmd, 1, "<harness>"); err != nil {
 		return err
 	}
-	return a.withHarness(ctx, cmd, func(h harnessVisor) error {
+	return a.with(ctx, cmd, func(h Visor) error {
 		x, err := h.UpdateHarness(ctx, cmd.Args().First(), cmd.String("version"))
 		if err != nil {
 			return err
@@ -141,7 +115,7 @@ func (a *app) harnessAuth(ctx context.Context, cmd *cli.Command) error {
 	if err := args(cmd, 2, "<harness> <mode>"); err != nil {
 		return err
 	}
-	return a.withHarness(ctx, cmd, func(h harnessVisor) error {
+	return a.with(ctx, cmd, func(h Visor) error {
 		x, err := h.SetHarnessAuth(ctx, cmd.Args().Get(0), agentvisor.AuthMode(cmd.Args().Get(1)))
 		if err != nil {
 			return err
@@ -154,7 +128,7 @@ func (a *app) harnessLogin(ctx context.Context, cmd *cli.Command) error {
 	if err := args(cmd, 1, "<harness>"); err != nil {
 		return err
 	}
-	return a.withHarness(ctx, cmd, func(h harnessVisor) error {
+	return a.with(ctx, cmd, func(h Visor) error {
 		l, err := h.LoginHarness(ctx, cmd.Args().First())
 		if err != nil {
 			return err
@@ -181,7 +155,7 @@ func (a *app) harnessLogout(ctx context.Context, cmd *cli.Command) error {
 	if err := args(cmd, 1, "<harness>"); err != nil {
 		return err
 	}
-	return a.withHarness(ctx, cmd, func(h harnessVisor) error { return h.LogoutHarness(ctx, cmd.Args().First()) })
+	return a.with(ctx, cmd, func(h Visor) error { return h.LogoutHarness(ctx, cmd.Args().First()) })
 }
 
 // printHarness prints one harness: all fields, or one summary line.

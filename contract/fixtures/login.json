@@ -1,0 +1,6 @@
+{
+  "harness": "claude",
+  "url": "https://login.example.com/device",
+  "code": "ABCD-1234",
+  "started_at": "2026-10-30T12:00:00Z"
+}

@@ -1,0 +1,30 @@
+{
+  "name": "claude",
+  "installed": true,
+  "version": "2.1.3",
+  "latest": "2.1.4",
+  "path": "/home/u/.example/visor/bin/claude/2.1.3/bin/claude",
+  "source": "visor",
+  "installs": [
+    "2.1.3"
+  ],
+  "installable": true,
+  "supported": true,
+  "auth_mode": "separate",
+  "auth": "ok",
+  "env_keys": [
+    "API_TOKEN"
+  ],
+  "models": [
+    {
+      "id": "sonnet",
+      "name": "Sonnet",
+      "default": true,
+      "efforts": [
+        "low",
+        "medium",
+        "high"
+      ]
+    }
+  ]
+}

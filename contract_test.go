@@ -90,6 +90,35 @@ func contractFixtures() []fixture {
 			Harness: "claude", Session: "ses_1", At: at,
 			Payload: json.RawMessage(`{"session_id":"v-1","cwd":"/src/app","hook_event_name":"Stop","last_assistant_message":"Done."}`),
 		}},
+		{"handover", handoverRequest{To: KindPTY}},
+		{"attach_client_frames", []ClientFrame{
+			{Type: ClientAttach, View: ViewTerminal, Cols: 120, Rows: 40},
+			{Type: ClientAck, Seq: 65536},
+			{Type: ClientControl, Cols: 100, Rows: 30},
+			{Type: ClientRelease},
+			{Type: ClientSend, Text: "Also run the linter."},
+			{Type: ClientInterrupt},
+		}},
+		{"attach_frames", []Frame{
+			{Type: FrameAttached, View: ViewTerminal, Source: KindPTY, Cols: 120, Rows: 40, Writable: true, Resizable: true, Title: "app"},
+			{Type: FrameResized, Cols: 100, Rows: 30},
+			{Type: FrameLease, Holder: LeaseYou},
+			{Type: FrameTurns, From: 40, To: 44, Turns: []Turn{
+				{Seq: 41, Role: TurnUser, At: at, Text: "Fix the test."},
+				{Seq: 44, Role: TurnResult, At: at, Text: "Done."},
+			}},
+			{Type: FrameEnded, Reason: EndExited},
+			{Type: FrameError, Code: "unsupported", Message: "agentvisor: unsupported: the chat view takes no control frame"},
+		}},
+		{"harness", Harness{
+			Name: "claude", Installed: true, Version: "2.1.3", Latest: "2.1.4", Path: "/home/u/.example/visor/bin/claude/2.1.3/bin/claude",
+			Source: SourceVisor, Installs: []string{"2.1.3"}, Installable: true, Supported: true, AuthMode: AuthSeparate, Auth: AuthOK,
+			EnvKeys: []string{"API_TOKEN"}, Models: []Model{{ID: "sonnet", Name: "Sonnet", Default: true, Efforts: []string{"low", "medium", "high"}}},
+		}},
+		{"harness_version", versionRequest{Version: "2.1.4"}},
+		{"harness_auth", authRequest{Mode: AuthShared}},
+		{"harness_env", envRequest{Env: map[string]string{"API_TOKEN": "secret"}}},
+		{"login", Login{Harness: "claude", URL: "https://login.example.com/device", Code: "ABCD-1234", StartedAt: at}},
 		{"hook_spec", HookSpec{Harnesses: []string{"claude", "codex"}, Auth: AuthShared}},
 		{"hook_status", []HookStatus{
 			{Harness: "claude", Auth: AuthShared, Dir: "/home/u/.claude", State: HookInstalled},
@@ -101,7 +130,7 @@ func contractFixtures() []fixture {
 func contractRoutes() []string {
 	s := &Server{}
 	var out []string
-	for _, table := range [][]route{s.serverRoutes(), s.sessionRoutes(), s.workdirRoutes(), s.eventRoutes(), s.hookRoutes()} {
+	for _, table := range [][]route{s.serverRoutes(), s.sessionRoutes(), s.workdirRoutes(), s.eventRoutes(), s.hookRoutes(), s.attachRoutes(), s.harnessRoutes()} {
 		for _, r := range table {
 			out = append(out, r.pattern)
 		}

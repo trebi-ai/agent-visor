@@ -71,7 +71,7 @@ const maxBody = 8 << 20
 // NewServer makes the HTTP handler for v.
 func NewServer(v *Visor) *Server {
 	s := &Server{v: v, log: v.log.With("source", "server"), mux: http.NewServeMux()}
-	for _, table := range [][]route{s.serverRoutes(), s.sessionRoutes(), s.workdirRoutes(), s.eventRoutes(), s.hookRoutes()} {
+	for _, table := range [][]route{s.serverRoutes(), s.sessionRoutes(), s.workdirRoutes(), s.eventRoutes(), s.hookRoutes(), s.attachRoutes(), s.harnessRoutes()} {
 		for _, r := range table {
 			s.mux.HandleFunc(r.pattern, r.h)
 		}
@@ -175,13 +175,7 @@ func (s *Server) reply(w http.ResponseWriter, status int, v any, err error) {
 }
 
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
-	code, status := "internal", http.StatusInternalServerError
-	for _, c := range errorCodes {
-		if errors.Is(err, c.err) {
-			code, status = c.code, c.status
-			break
-		}
-	}
+	code, status := errorCode(err)
 	if status == http.StatusInternalServerError {
 		path := ""
 		if r != nil {
@@ -194,6 +188,16 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	if err := json.NewEncoder(w).Encode(errorBody{Error: errorInfo{Code: code, Message: err.Error()}}); err != nil {
 		s.log.Debug("write error", "err", err)
 	}
+}
+
+// errorCode gives the protocol code and the HTTP status of err.
+func errorCode(err error) (string, int) {
+	for _, c := range errorCodes {
+		if errors.Is(err, c.err) {
+			return c.code, c.status
+		}
+	}
+	return "internal", http.StatusInternalServerError
 }
 
 // remoteError is an error from the socket. It unwraps to the error of its

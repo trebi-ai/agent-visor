@@ -41,6 +41,17 @@ type api interface {
 	Hooks(ctx context.Context, spec HookSpec) ([]HookStatus, error)
 	InstallHooks(ctx context.Context, spec HookSpec) ([]HookStatus, error)
 	RemoveHooks(ctx context.Context, spec HookSpec) ([]HookStatus, error)
+	Attach(ctx context.Context, id string, o AttachOptions) (*AttachStream, error)
+	Handover(ctx context.Context, id string, to Kind) error
+	Harnesses(ctx context.Context) ([]Harness, error)
+	Harness(ctx context.Context, name string) (Harness, error)
+	InstallHarness(ctx context.Context, name, version string) (Harness, error)
+	UpdateHarness(ctx context.Context, name, version string) (Harness, error)
+	SetHarnessAuth(ctx context.Context, name string, mode AuthMode) (Harness, error)
+	LoginHarness(ctx context.Context, name string) (Login, error)
+	LogoutHarness(ctx context.Context, name string) error
+	HarnessModels(ctx context.Context, name string) ([]Model, error)
+	SetHarnessEnv(ctx context.Context, name string, env map[string]string) error
 	Close(ctx context.Context) error
 }
 

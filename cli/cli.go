@@ -60,6 +60,16 @@ type Visor interface {
 	ArchiveWorkdir(ctx context.Context, id string) error
 	RestoreWorkdir(ctx context.Context, id string) (agentvisor.Workdir, error)
 	RemoveWorkdir(ctx context.Context, id string, force bool) error
+	Attach(ctx context.Context, id string, o agentvisor.AttachOptions) (*agentvisor.AttachStream, error)
+	Handover(ctx context.Context, id string, to agentvisor.Kind) error
+	Harnesses(ctx context.Context) ([]agentvisor.Harness, error)
+	Harness(ctx context.Context, name string) (agentvisor.Harness, error)
+	InstallHarness(ctx context.Context, name, version string) (agentvisor.Harness, error)
+	UpdateHarness(ctx context.Context, name, version string) (agentvisor.Harness, error)
+	SetHarnessAuth(ctx context.Context, name string, mode agentvisor.AuthMode) (agentvisor.Harness, error)
+	LoginHarness(ctx context.Context, name string) (agentvisor.Login, error)
+	LogoutHarness(ctx context.Context, name string) error
+	HarnessModels(ctx context.Context, name string) ([]agentvisor.Model, error)
 	Close(ctx context.Context) error
 }
 

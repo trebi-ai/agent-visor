@@ -98,6 +98,14 @@ func (f *fakeVisor) RemoveWorkdir(context.Context, string, bool) error {
 }
 func (f *fakeVisor) Close(context.Context) error { return nil }
 
+func (f *fakeVisor) Attach(context.Context, string, agentvisor.AttachOptions) (*agentvisor.AttachStream, error) {
+	return nil, agentvisor.ErrUnsupported
+}
+
+func (f *fakeVisor) Handover(context.Context, string, agentvisor.Kind) error {
+	return agentvisor.ErrUnsupported
+}
+
 func (f *fakeVisor) Harnesses(context.Context) ([]agentvisor.Harness, error) {
 	return []agentvisor.Harness{
 		{Name: "claude", Installed: true, Version: "2.1.0", Latest: "2.2.0", Path: "/visor/bin/claude/current/claude", Source: agentvisor.SourceVisor, Installs: []string{"2.0.0", "2.1.0"}, Installable: true, Supported: true, AuthMode: agentvisor.AuthSeparate, Auth: agentvisor.AuthOK, EnvKeys: []string{"API_TOKEN"}},
@@ -224,9 +232,9 @@ func TestMountUnderProduct(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), `"visor serve"`) {
 		t.Fatalf("status with no visor: %v", err)
 	}
-	err = root.Run(t.Context(), []string{"visor", "session", "attach", "ses_a"})
-	if !errors.Is(err, errNotAvailable) || !strings.HasPrefix(err.Error(), "session attach:") {
-		t.Fatalf("attach seam: %v", err)
+	err = root.Run(t.Context(), []string{"visor", "upgrade"})
+	if !errors.Is(err, errNotAvailable) || !strings.HasPrefix(err.Error(), "upgrade:") {
+		t.Fatalf("upgrade seam: %v", err)
 	}
 }
 
@@ -239,20 +247,6 @@ func TestParseEnvHidesValues(t *testing.T) {
 }
 
 // runFake runs the command tree against the fake visor.
-func TestHarnessSeam(t *testing.T) {
-	t.Parallel()
-	// Only the Visor methods: a connection with no harness API.
-	type plain struct{ Visor }
-	var out bytes.Buffer
-	cmd := Command(Options{Stdout: &out, Stderr: &out, Dial: func(context.Context, string) (Visor, error) {
-		return plain{newFakeVisor()}, nil
-	}})
-	err := cmd.Run(t.Context(), []string{"agent-visor", "harness", "ls"})
-	if !errors.Is(err, errNotAvailable) || err.Error() != "harness ls: not available yet" {
-		t.Fatalf("harness ls with no harness API: %v", err)
-	}
-}
-
 func runFake(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	var out, errOut bytes.Buffer

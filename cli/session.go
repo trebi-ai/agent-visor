@@ -39,7 +39,13 @@ func (a *app) sessionCommand() *cli.Command {
 				},
 			},
 			{Name: "start", Usage: "Start a session", Action: a.sessionStart, Flags: startFlags()},
-			{Name: "shell", Usage: "Start a shell in a terminal and attach to it", Action: a.notAvailable},
+			{
+				Name: "shell", Usage: "Start a shell in a terminal and attach to it (Ctrl-] detaches)", Action: a.sessionShell,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "dir", Usage: "the working folder (default: the current folder)"},
+					&cli.StringFlag{Name: "shell", Usage: "the shell program (default: $SHELL)"},
+				},
+			},
 			{Name: "show", Usage: "Show one session", ArgsUsage: id, Action: a.sessionShow},
 			{
 				Name: "logs", Usage: "Print the events of a session", ArgsUsage: id, Action: a.sessionLogs,
@@ -48,7 +54,7 @@ func (a *app) sessionCommand() *cli.Command {
 					&cli.Uint64Flag{Name: "after", Usage: "only the events after this seq"},
 				},
 			},
-			{Name: "attach", Usage: "Attach to the terminal of a session", ArgsUsage: id, Action: a.notAvailable},
+			{Name: "attach", Usage: "Attach to the terminal of a session (Ctrl-] detaches)", ArgsUsage: id, Action: a.sessionAttach},
 			{Name: "send", Usage: "Send a turn (\"-\" reads it from stdin)", ArgsUsage: id + " <text>...", Action: a.sessionSend},
 			{
 				Name: "answer", Usage: "Answer an open permission or question", ArgsUsage: id + " <request-id>", Action: a.sessionAnswer,
@@ -61,7 +67,12 @@ func (a *app) sessionCommand() *cli.Command {
 			{Name: "interrupt", Usage: "Stop the current turn", ArgsUsage: id, Action: a.sessionInterrupt},
 			{Name: "stop", Usage: "End a session", ArgsUsage: id, Action: a.sessionStop},
 			{Name: "resume", Usage: "Resume a suspended or lost session (default prompt: " + strconv.Quote(defaultResume) + ")", ArgsUsage: id + " [prompt]", Action: a.sessionResume},
-			{Name: "handover", Usage: "Move a session between the terminal and the chat view", ArgsUsage: id, Action: a.notAvailable},
+			{
+				Name: "handover", Usage: "Move a session between the terminal and the chat view", ArgsUsage: id, Action: a.sessionHandover,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "to", Usage: fmt.Sprintf("%s or %s (default: the other one)", agentvisor.KindPTY, agentvisor.KindWire)},
+				},
+			},
 		},
 	}
 }
