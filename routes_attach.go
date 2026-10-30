@@ -16,6 +16,7 @@ func (s *Server) attachRoutes() []route {
 		{"POST /v1/sessions/{id}/handover", s.handover},
 		{"GET /v1/sessions/{id}/screen", s.screen},
 		{"POST /v1/sessions/{id}/keys", s.keys},
+		{"POST /v1/sessions/{id}/paste", s.paste},
 		{"GET /v1/sessions/{id}/output", s.output},
 	}
 }
@@ -46,6 +47,19 @@ func (s *Server) keys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.reply(w, http.StatusNoContent, nil, s.v.Keys(r.Context(), r.PathValue("id"), in.Data))
+}
+
+// pasteRequest is the body of a paste call.
+type pasteRequest struct {
+	Text string `json:"text"`
+}
+
+func (s *Server) paste(w http.ResponseWriter, r *http.Request) {
+	var in pasteRequest
+	if !s.decode(w, r, &in) {
+		return
+	}
+	s.reply(w, http.StatusNoContent, nil, s.v.Paste(r.Context(), r.PathValue("id"), in.Text))
 }
 
 // handoverRequest is the body of a handover.

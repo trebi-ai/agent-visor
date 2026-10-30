@@ -209,6 +209,11 @@ func TestPTYScreenAndKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	sc := waitScreen(t, v, s.ID, "echo:hello")
+	// No bracketed paste mode: the text goes as typed.
+	if err := v.Paste(t.Context(), s.ID, "plain\r"); err != nil {
+		t.Fatal(err)
+	}
+	waitScreen(t, v, s.ID, "echo:plain")
 	if sc.Cols != 80 || sc.Rows != 24 || len(sc.Lines) != 24 {
 		t.Fatalf("screen size %dx%d with %d lines", sc.Cols, sc.Rows, len(sc.Lines))
 	}
@@ -319,6 +324,29 @@ func TestPTYCommand(t *testing.T) {
 		if !errors.Is(err, tc.err) || strings.Join(argv, " ") != tc.want {
 			t.Errorf("%s: %q %v", name, argv, err)
 		}
+	}
+}
+
+func TestPasteMode(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		out  string
+		cur  bool
+		want bool
+	}{
+		{"", false, false},
+		{"", true, true},
+		{"a\x1b[?2004hb", false, true},
+		{"\x1b[?2004h\x1b[?2004l", true, false},
+		{"\x1b[?2004l x \x1b[?2004h", false, true},
+	} {
+		if got := pasteMode([]byte(c.out), c.cur); got != c.want {
+			t.Errorf("pasteMode(%q, %v) = %v", c.out, c.cur, got)
+		}
+	}
+	h := &ptyHandle{paste: true}
+	if got := string(h.pasteData("a\nb")); got != "\x1b[200~a\nb\x1b[201~" {
+		t.Errorf("pasteData = %q", got)
 	}
 }
 

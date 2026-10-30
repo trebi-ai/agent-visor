@@ -97,6 +97,7 @@ func contractFixtures() []fixture {
 		{"screen", Screen{Cols: 80, Rows: 3, Lines: []string{"$ make test", "ok", "$"}, CursorRow: 2, CursorCol: 2}},
 		{"output", outputReply{Text: "$ make test\nok\n"}},
 		{"keys", keysRequest{Data: []byte("\x1b[B\r")}},
+		{"paste", pasteRequest{Text: "line one\nline two"}},
 		{"attach_client_frames", []ClientFrame{
 			{Type: ClientAttach, View: ViewTerminal, Cols: 120, Rows: 40},
 			{Type: ClientAck, Seq: 65536},

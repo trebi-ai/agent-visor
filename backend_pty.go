@@ -70,6 +70,8 @@ type ptyHandle struct {
 	stale   bool
 	answers []byte
 	fresh   bool
+	// paste is true while the program asks for bracketed paste.
+	paste bool
 }
 
 var (
@@ -503,6 +505,7 @@ func (h *ptyHandle) resnapshot(a *AttachStream) {
 func (h *ptyHandle) snapshot(p []byte) {
 	h.mu.Lock()
 	h.ring, h.pending, h.stale = p, nil, true
+	h.paste = pasteMode(p, false)
 	if h.fresh {
 		h.pending = bytes.Clone(p)
 		h.render(true)
@@ -525,6 +528,7 @@ func (h *ptyHandle) output(p []byte) {
 		h.pending, h.stale = nil, true
 	}
 	h.pending = append(h.pending, p...)
+	h.paste = pasteMode(h.ring[max(0, len(h.ring)-len(p)-8):], h.paste)
 	if dsrQuery.Match(h.pending[max(0, len(h.pending)-len(p)-16):]) {
 		h.render(true)
 	}
@@ -678,6 +682,27 @@ func oscEnd(p []byte, j int) int {
 		}
 	}
 	return j
+}
+
+// pasteMode gives the bracketed paste mode after output p, which starts in
+// mode cur.
+func pasteMode(p []byte, cur bool) bool {
+	on, off := bytes.LastIndex(p, []byte("\x1b[?2004h")), bytes.LastIndex(p, []byte("\x1b[?2004l"))
+	if on < 0 && off < 0 {
+		return cur
+	}
+	return on > off
+}
+
+// pasteData gives text as the program wants a paste: in bracketed paste
+// markers when it asks for them.
+func (h *ptyHandle) pasteData(text string) []byte {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.paste {
+		return []byte("\x1b[200~" + text + "\x1b[201~")
+	}
+	return []byte(text)
 }
 
 // answerWriter keeps the replies of the emulator. The emulator writes while

@@ -81,6 +81,11 @@ func (c *Client) Screen(ctx context.Context, id string) (Screen, error) {
 	return out, err
 }
 
+// Paste writes text to the terminal of a session as one paste.
+func (c *Client) Paste(ctx context.Context, id, text string) error {
+	return c.do(ctx, http.MethodPost, "/v1/sessions/"+url.PathEscape(id)+"/paste", pasteRequest{Text: text}, nil)
+}
+
 // Keys writes data to the terminal of a session as typed keys.
 func (c *Client) Keys(ctx context.Context, id string, data []byte) error {
 	return c.do(ctx, http.MethodPost, "/v1/sessions/"+url.PathEscape(id)+"/keys", keysRequest{Data: data}, nil)

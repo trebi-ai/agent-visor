@@ -52,3 +52,4 @@
 - Add `Visor.Output` and `Client.Output`, with the route `GET /v1/sessions/{id}/output`: the recent output of a PTY session as plain text, also after the session ends.
 - The terminal emulator reads the output only when a client asks for the screen, or when the program asks a status query.
 - When the home path is too long for a Unix socket path, the holder sockets go to `/tmp/agent-visor-<uid>/<hash of home>/`. The visor checks that this folder belongs to the user and has mode 0700. `holder.MaxSocketPath` is exported.
+- Add `Visor.Paste` and `Client.Paste`, with the route `POST /v1/sessions/{id}/paste`. When the program asks for bracketed paste, the text goes in the paste markers.

@@ -356,6 +356,17 @@ func (v *Visor) Keys(_ context.Context, id string, data []byte) error {
 	return ph.write(data)
 }
 
+// Paste writes text to the terminal of a session as one paste, with no
+// return added. When the program asks for bracketed paste, the text goes in
+// the paste markers, so that a newline in it does not submit.
+func (v *Visor) Paste(_ context.Context, id, text string) error {
+	ph, err := v.terminal(id)
+	if err != nil {
+		return err
+	}
+	return ph.write(ph.pasteData(text))
+}
+
 // Output gives the end of the terminal output of a session as plain text,
 // one ring long. It also works after the session ends.
 func (v *Visor) Output(_ context.Context, id string) (string, error) {
