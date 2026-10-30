@@ -41,6 +41,12 @@ type Options struct {
 	Env map[string]string
 	// Backends are extra backends, for example an optional host of sessions.
 	Backends []Backend
+	// HolderCommand runs a holder; the visor adds the session id. Empty is
+	// this program with the argument hold.
+	HolderCommand []string
+	// TerminalCommand builds the command of an agent session in a PTY. Nil
+	// uses the harness program with ExtraArgs and has no resume command.
+	TerminalCommand TerminalCommand
 	// Drivers replace agent-wire drivers, for tests (for example the fake
 	// harness with a script).
 	Drivers map[string]agentwire.Driver
@@ -94,6 +100,8 @@ type record struct {
 	ending State
 	// done closes when the pump of the current handle ends.
 	done chan struct{}
+	// handover is the kind that the session moves to, or empty.
+	handover Kind
 }
 
 // Protocol is the socket protocol version.
@@ -155,6 +163,10 @@ func New(ctx context.Context, o Options) (*Visor, error) {
 	}
 	v.harnesses = harness.New(o.Home, st, v.wire, v.harnessOptions())
 	v.backends[KindWire] = newWireBackend(v.wire)
+	if exe, err := os.Executable(); err == nil && len(o.HolderCommand) == 0 {
+		o.HolderCommand = []string{exe, "hold"}
+	}
+	v.backends[KindPTY] = newPTYBackend(o.Home, o.HolderCommand, o.TerminalCommand, o.Logger.With("source", "pty"))
 	for _, b := range o.Backends {
 		v.backends[b.Kind()] = b
 	}
@@ -249,6 +261,9 @@ func (v *Visor) Sessions(_ context.Context, f Filter) ([]Session, error) {
 func (v *Visor) Send(ctx context.Context, id string, in Input) error {
 	rec, h, err := v.lookup(id)
 	if err != nil {
+		return err
+	}
+	if err := v.handoverBusy(rec); err != nil {
 		return err
 	}
 	if h == nil {
@@ -401,6 +416,11 @@ func (v *Visor) Close(ctx context.Context) error {
 		if rec.h == nil {
 			continue
 		}
+		if v.caps(rec.s).Survives {
+			// The backend detaches in Close, and the process keeps running.
+			rec.ending = rec.s.State
+			continue
+		}
 		rec.ending = StateLost
 		if rec.s.State == StateIdle && v.caps(rec.s).Resume {
 			rec.ending = StateSuspended
@@ -413,16 +433,16 @@ func (v *Visor) Close(ctx context.Context) error {
 			v.log.Warn("close session", "session_id", h.Session(), "err", err)
 		}
 	}
-	v.wg.Wait()
-	if err := v.harnesses.Close(ctx); err != nil {
-		v.log.Warn("close the harness manager", "err", err)
-	}
-	v.cancel()
 	for _, b := range v.backends {
 		if err := b.Close(ctx); err != nil {
 			v.log.Warn("close backend", "kind", b.Kind(), "err", err)
 		}
 	}
+	v.wg.Wait()
+	if err := v.harnesses.Close(ctx); err != nil {
+		v.log.Warn("close the harness manager", "err", err)
+	}
+	v.cancel()
 	v.events.close()
 	return v.st.Close()
 }
@@ -558,8 +578,9 @@ func (v *Visor) launch(ctx context.Context, rec *record, b Backend, spec StartSp
 	}
 	v.attach(rec, h)
 	// The pump can move the state first, when a fast turn ends.
+	// A backend with no typed events runs while its process lives.
 	to := StateIdle
-	if prompt != nil {
+	if prompt != nil || !b.Caps(spec.Harness).Structured {
 		to = StateRunning
 	}
 	v.moveIf(ctx, rec, StateStarting, to)
@@ -666,6 +687,10 @@ func (v *Visor) ended(rec *record, h Handle) {
 		return
 	}
 	to := rec.ending
+	if to == "" && rec.handover == KindWire {
+		rec.s.Kind, rec.s.ExitCode, rec.handover = KindWire, nil, ""
+		to = StateSuspended
+	}
 	if to == "" {
 		to = StateExited
 	}
