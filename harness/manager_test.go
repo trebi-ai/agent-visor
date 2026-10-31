@@ -333,6 +333,30 @@ func TestLoginInAppAndMissing(t *testing.T) {
 	}
 }
 
+func TestBinaryFact(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	bin := filepath.Join(r.home, "tools", "own")
+	r.m.o.Facts.Binary = func(h agentwire.Harness) string {
+		if h == "fakeh" {
+			return bin
+		}
+		return ""
+	}
+	h, err := r.m.Harness(t.Context(), "fakeh")
+	if err != nil || !h.Installed || h.Path != bin || h.Source != SourceSystem {
+		t.Fatalf("harness: %+v %v", h, err)
+	}
+	r.m.o.Facts.LoginCommand = func(agentwire.Harness, agentwire.LoginOptions) ([]string, error) { return []string{"own"}, nil }
+	l, err := r.m.Login(t.Context(), "fakeh", LoginSpec{})
+	if err != nil || !l.InApp {
+		t.Fatalf("login: %+v %v", l, err)
+	}
+	if h, _ := r.m.Harness(t.Context(), "claude"); h.Installed {
+		t.Fatalf("claude: %+v", h)
+	}
+}
+
 func TestEnvStaysSecret(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)

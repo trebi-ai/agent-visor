@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.1 (2026-10-31)
+
+- Add `HarnessFacts.Binary`. It finds the program of a harness that agent-wire does not find, such as a test harness of the product. The inventory shows it as a system install, and a login and a logout run it.
+
 ## v0.2.0 (2026-10-31)
 
 Breaking: `LoginHarness` takes a `LoginSpec`, and `cli.Visor` has more methods.

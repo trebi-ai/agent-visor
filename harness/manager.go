@@ -125,6 +125,9 @@ type Facts struct {
 	LoginEnv        func(h agentwire.Harness, home string) map[string]string
 	CredentialFiles func(h agentwire.Harness) []string
 	AuthStatus      func(ctx context.Context, h agentwire.Harness, home string) (agentwire.AuthState, error)
+	// Binary finds the program of a harness that agent-wire does not find,
+	// such as a test harness of the product. Nil finds none.
+	Binary func(h agentwire.Harness) string
 }
 
 // Options configures a Manager.
@@ -351,9 +354,9 @@ func (m *Manager) Harness(ctx context.Context, name string) (Harness, error) {
 	if v, path, ok := m.current(name); ok {
 		out.Installed, out.Version, out.Path, out.Source, out.Supported = true, v, path, SourceVisor, true
 	} else {
-		d, err := m.wire.Detect(ctx, h)
+		d, err := m.detect(ctx, name)
 		if err != nil {
-			return Harness{}, fmt.Errorf("detect %s: %w", name, err)
+			return Harness{}, err
 		}
 		if d.Path != "" {
 			out.Installed, out.Path, out.Source = true, d.Path, SourceSystem

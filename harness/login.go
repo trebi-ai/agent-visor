@@ -511,11 +511,25 @@ func (m *Manager) binary(ctx context.Context, name string) (string, error) {
 	if _, path, ok := m.current(name); ok {
 		return path, nil
 	}
-	d, err := m.wire.Detect(ctx, agentwire.Harness(name))
+	d, err := m.detect(ctx, name)
 	if err != nil {
-		return "", fmt.Errorf("detect %s: %w", name, err)
+		return "", err
 	}
 	return d.Path, nil
+}
+
+// detect probes the system install of the harness. Facts.Binary gives the
+// path when agent-wire finds none.
+func (m *Manager) detect(ctx context.Context, name string) (agentwire.Detection, error) {
+	h := agentwire.Harness(name)
+	d, err := m.wire.Detect(ctx, h)
+	if err != nil {
+		return d, fmt.Errorf("detect %s: %w", name, err)
+	}
+	if d.Path == "" && m.o.Facts.Binary != nil {
+		d.Path = m.o.Facts.Binary(h)
+	}
+	return d, nil
 }
 
 // Write keeps the tail of the output and reads the login screen from it.
