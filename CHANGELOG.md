@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.2.0 (unreleased)
+## v0.2.0 (2026-10-31)
 
 Breaking: `LoginHarness` takes a `LoginSpec`, and `cli.Visor` has more methods.
 
