@@ -1,0 +1,3 @@
+KEY             KIND  SHARED  LOCKED  USER PATH                          HOME PATH
+login           link  true    true    /home/u/.claude/.credentials.json  /visor/harness/claude/.credentials.json
+settings_prefs  keys  false   false   /home/u/.claude/settings.json      /visor/harness/claude/settings.json

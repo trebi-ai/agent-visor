@@ -147,6 +147,8 @@ var (
 	// ErrProtocol means that the two sides speak socket protocols with a
 	// different major version.
 	ErrProtocol = errors.New("agentvisor: unknown protocol")
+	// ErrStale is a write with an old etag.
+	ErrStale = errors.New("agentvisor: changed since the read")
 )
 
 // New opens the visor in home, recovers the sessions of the last run, and
@@ -196,8 +198,21 @@ func New(ctx context.Context, o Options) (*Visor, error) {
 		_ = v.Close(ctx) // the boot error is the one to report
 		return nil, err
 	}
-	v.wg.Add(1)
+	v.wg.Add(2)
 	go v.upgradeLoop()
+	go func() {
+		defer v.wg.Done()
+		ctx, cancel := context.WithCancel(v.ctx)
+		defer cancel()
+		go func() {
+			select {
+			case <-v.quit:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+		v.harnesses.Run(ctx)
+	}()
 	return v, nil
 }
 
@@ -258,42 +273,7 @@ func (v *Visor) Start(ctx context.Context, spec StartSpec) (Session, error) {
 	if err := spec.Validate(); err != nil {
 		return Session{}, err
 	}
-	if v.isRestarting() {
-		return Session{}, fmt.Errorf("%w: the visor restarts for an upgrade", ErrBusy)
-	}
-	spec = spec.withDefaults()
-	b, ok := v.backends[spec.Kind]
-	if !ok {
-		return Session{}, fmt.Errorf("%w: no backend for kind %s", ErrUnsupported, spec.Kind)
-	}
-	w, dir, err := v.placeFor(ctx, spec)
-	if err != nil {
-		return Session{}, err
-	}
-	now := time.Now().UTC()
-	s := Session{
-		ID: newID("ses"), Project: w.Project, Workdir: w.ID, Kind: spec.Kind, Role: spec.Role, Title: spec.Title,
-		Harness: spec.Harness, Model: spec.Model, Effort: spec.Effort, WorkingDir: dir, State: StateStarting,
-		VendorID: spec.ResumeID, Labels: spec.Labels, Restart: spec.Restart, EnvKeys: envKeys(spec.Env),
-		CreatedAt: now, UpdatedAt: now,
-	}
-	spec.WorkingDir = dir
-	if err := newSpecFile(v.opts.Home, s.ID).write(spec); err != nil {
-		return Session{}, err
-	}
-	rec := &record{s: s}
-	if err := v.add(ctx, rec); err != nil {
-		return Session{}, err
-	}
-	var prompt *Input
-	if spec.Prompt != "" {
-		prompt = &Input{Text: spec.Prompt}
-		v.emit(ctx, rec, Event{Type: EventUser, Text: prompt.Text, Input: true})
-	}
-	if err := v.launch(ctx, rec, b, spec, w, spec.ResumeID != "", prompt); err != nil {
-		return Session{}, err
-	}
-	return v.Session(ctx, s.ID)
+	return v.start(ctx, spec)
 }
 
 // Session reads one session.
@@ -516,6 +496,47 @@ func (v *Visor) Close(ctx context.Context) error {
 	v.cancel()
 	v.events.close()
 	return v.st.Close()
+}
+
+// start starts a valid spec. The visor uses it for its own sessions, which
+// can carry visor labels.
+func (v *Visor) start(ctx context.Context, spec StartSpec) (Session, error) {
+	if v.isRestarting() {
+		return Session{}, fmt.Errorf("%w: the visor restarts for an upgrade", ErrBusy)
+	}
+	spec = spec.withDefaults()
+	b, ok := v.backends[spec.Kind]
+	if !ok {
+		return Session{}, fmt.Errorf("%w: no backend for kind %s", ErrUnsupported, spec.Kind)
+	}
+	w, dir, err := v.placeFor(ctx, spec)
+	if err != nil {
+		return Session{}, err
+	}
+	now := time.Now().UTC()
+	s := Session{
+		ID: newID("ses"), Project: w.Project, Workdir: w.ID, Kind: spec.Kind, Role: spec.Role, Title: spec.Title,
+		Harness: spec.Harness, Model: spec.Model, Effort: spec.Effort, WorkingDir: dir, State: StateStarting,
+		VendorID: spec.ResumeID, Labels: spec.Labels, Restart: spec.Restart, EnvKeys: envKeys(spec.Env),
+		CreatedAt: now, UpdatedAt: now,
+	}
+	spec.WorkingDir = dir
+	if err := newSpecFile(v.opts.Home, s.ID).write(spec); err != nil {
+		return Session{}, err
+	}
+	rec := &record{s: s}
+	if err := v.add(ctx, rec); err != nil {
+		return Session{}, err
+	}
+	var prompt *Input
+	if spec.Prompt != "" {
+		prompt = &Input{Text: spec.Prompt}
+		v.emit(ctx, rec, Event{Type: EventUser, Text: prompt.Text, Input: true})
+	}
+	if err := v.launch(ctx, rec, b, spec, w, spec.ResumeID != "", prompt); err != nil {
+		return Session{}, err
+	}
+	return v.Session(ctx, s.ID)
 }
 
 // boot loads the sessions, joins the sessions that lived through the restart,

@@ -54,6 +54,14 @@ type Harness struct {
 	// EnvKeys lists the harness env keys. The values never leave the visor.
 	EnvKeys []string `json:"env_keys,omitempty"`
 	Limits  *Limits  `json:"limits,omitempty"`
+	// Updates is the update mode. KeptAt is when keep mode started.
+	Updates UpdateMode `json:"updates"`
+	KeptAt  *time.Time `json:"kept_at,omitempty"`
+	// Pending means that an update waits for the end of the live sessions.
+	Pending  bool `json:"pending,omitempty"`
+	Updating bool `json:"updating,omitempty"`
+	// History holds the last version changes, oldest first.
+	History []Update `json:"history,omitempty"`
 	// Models is the fixed model list. Manager.Models gives the live list.
 	Models []Model `json:"models,omitempty"`
 	// Login is the login that runs now, or nil.
@@ -90,7 +98,8 @@ type LimitWindow struct {
 type Launch struct {
 	// Binary is the visor copy. Empty searches PATH.
 	Binary string
-	// Home is the login home of a separate login. Empty uses the user login.
+	// Home is the harness home that the visor builds. Empty uses the user
+	// home of the harness.
 	Home string
 	// Env is the harness env layer.
 	Env map[string]string
@@ -111,7 +120,7 @@ type Wire interface {
 // Tests replace them.
 type Facts struct {
 	Recipe          func(h agentwire.Harness) (agentwire.InstallRecipe, bool)
-	LoginCommand    func(h agentwire.Harness) []string
+	LoginCommand    func(h agentwire.Harness, o agentwire.LoginOptions) ([]string, error)
 	LogoutCommand   func(h agentwire.Harness) []string
 	LoginEnv        func(h agentwire.Harness, home string) map[string]string
 	CredentialFiles func(h agentwire.Harness) []string
@@ -133,8 +142,23 @@ type Options struct {
 	LoginTimeout time.Duration
 	// InUse reports that a live session uses the harness. The visor sets it.
 	InUse func(name string) bool
+	// Enabled reports that the visor checks and updates a harness, also a
+	// binary that the visor did not install. Nil checks only the visor
+	// copies.
+	Enabled func(name string) bool
+	// CheckEvery is the time between two looks for a new release. Zero is
+	// 6 h.
+	CheckEvery time.Duration
+	// Terminal runs the logins in terminal sessions. Nil runs them with a
+	// pipe, which cannot take a pasted code.
+	Terminal Terminal
 	// OnChange gets the name of a harness that changed. The visor sets it.
 	OnChange func(name string)
+	// Policy is the product policy for the harness homes.
+	Policy Policy
+	// UserHome is the home folder of the user. Empty uses the home of the
+	// process user.
+	UserHome string
 	Logger   *slog.Logger
 }
 
@@ -151,6 +175,9 @@ type Manager struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
+	// homeMu orders the writes of the harness homes.
+	homeMu sync.Mutex
+
 	// stateMu orders the read, change, and write of a state document.
 	stateMu sync.Mutex
 
@@ -160,12 +187,24 @@ type Manager struct {
 	auth   map[string]authEntry
 	latest map[string]latestEntry
 	logins map[string]*login
+	ended  map[string]Login
 }
 
 // state is the stored state of one harness.
 type state struct {
-	AuthMode AuthMode `json:"auth_mode,omitempty"`
-	Limits   *Limits  `json:"limits,omitempty"`
+	AuthMode AuthMode             `json:"auth_mode,omitempty"`
+	Limits   *Limits              `json:"limits,omitempty"`
+	Files    map[string]fileState `json:"files,omitempty"`
+	Updates  UpdateMode           `json:"updates,omitempty"`
+	KeptAt   time.Time            `json:"kept_at,omitzero"`
+	// CheckedAt is the last look for a new release.
+	CheckedAt time.Time `json:"checked_at,omitzero"`
+	// Seen is the version at the last check, to find an update outside
+	// the visor.
+	Seen      string   `json:"seen,omitempty"`
+	Pending   bool     `json:"pending,omitempty"`
+	PendingTo string   `json:"pending_to,omitempty"`
+	History   []Update `json:"history,omitempty"`
 }
 
 type authEntry struct {
@@ -182,7 +221,7 @@ type latestEntry struct {
 
 // Auth modes.
 const (
-	// AuthShared uses the login of the user, in the user home of the harness.
+	// AuthShared uses the login of the user. The harness home links it.
 	AuthShared AuthMode = "shared"
 	// AuthSeparate uses a login of the visor only, in <home>/harness/<name>.
 	AuthSeparate AuthMode = "separate"
@@ -234,7 +273,7 @@ func New(home string, st *store.Store, wire Wire, o Options) *Manager {
 		f.Recipe = agentwire.Recipe
 	}
 	if f.LoginCommand == nil {
-		f.LoginCommand = agentwire.LoginCommand
+		f.LoginCommand = agentwire.LoginCommandFor
 	}
 	if f.LogoutCommand == nil {
 		f.LogoutCommand = agentwire.LogoutCommand
@@ -251,6 +290,9 @@ func New(home string, st *store.Store, wire Wire, o Options) *Manager {
 	if o.LoginWait == 0 {
 		o.LoginWait = 20 * time.Second
 	}
+	if o.CheckEvery == 0 {
+		o.CheckEvery = 6 * time.Hour
+	}
 	if o.LoginTimeout == 0 {
 		o.LoginTimeout = 10 * time.Minute
 	}
@@ -264,7 +306,7 @@ func New(home string, st *store.Store, wire Wire, o Options) *Manager {
 	}
 	m := &Manager{
 		home: home, st: st, wire: wire, o: o, log: o.Logger.With("source", "harness"), names: names,
-		ops: map[string]string{}, auth: map[string]authEntry{}, latest: map[string]latestEntry{}, logins: map[string]*login{},
+		ops: map[string]string{}, auth: map[string]authEntry{}, latest: map[string]latestEntry{}, logins: map[string]*login{}, ended: map[string]Login{},
 	}
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 	return m
@@ -300,6 +342,11 @@ func (m *Manager) Harness(ctx context.Context, name string) (Harness, error) {
 	out := Harness{
 		Name: name, Installable: hasRecipe && r.Method == agentwire.InstallNPM, Installs: m.installs(name),
 		AuthMode: st.mode(), Limits: st.Limits, EnvKeys: slices.Sorted(maps.Keys(env)), Latest: m.cachedLatest(name),
+		Updates: st.updates(), Pending: st.Pending, History: st.History,
+	}
+	if !st.KeptAt.IsZero() && st.updates() == UpdatesKeep {
+		t := st.KeptAt
+		out.KeptAt = &t
 	}
 	if v, path, ok := m.current(name); ok {
 		out.Installed, out.Version, out.Path, out.Source, out.Supported = true, v, path, SourceVisor, true
@@ -319,10 +366,10 @@ func (m *Manager) Harness(ctx context.Context, name string) (Harness, error) {
 		out.Models = append(out.Models, modelOf(h, mi))
 	}
 	m.mu.Lock()
-	if l := m.logins[name]; l != nil {
-		snap := l.state
-		out.Login = &snap
+	if l, ok := m.loginLocked(name); ok {
+		out.Login = &l
 	}
+	out.Updating = m.ops[name] == "update"
 	m.mu.Unlock()
 	return out, nil
 }
@@ -336,13 +383,15 @@ func (m *Manager) SetAuthMode(ctx context.Context, name string, mode AuthMode) (
 	if mode != AuthShared && mode != AuthSeparate {
 		return Harness{}, fmt.Errorf("%w: auth mode %q", ErrInvalid, mode)
 	}
-	if mode == AuthSeparate {
-		if err := os.MkdirAll(m.separateHome(name), 0o700); err != nil {
-			return Harness{}, fmt.Errorf("make the login home of %s: %w", name, err)
-		}
-	}
 	changed, err := m.changeState(ctx, name, func(s *state) { s.AuthMode = mode })
 	if err != nil {
+		return Harness{}, err
+	}
+	st, err := m.state(ctx, name)
+	if err != nil {
+		return Harness{}, err
+	}
+	if _, _, err := m.prepareHome(name, st); err != nil {
 		return Harness{}, err
 	}
 	if changed {
@@ -384,6 +433,7 @@ func (m *Manager) Launch(ctx context.Context, name string) (Launch, error) {
 	if !m.known(name) {
 		return l, nil
 	}
+	m.waitUpdate(ctx, name)
 	h := agentwire.Harness(name)
 	st, err := m.state(ctx, name)
 	if err != nil {
@@ -402,13 +452,12 @@ func (m *Manager) Launch(ctx context.Context, name string) (Launch, error) {
 			l.Args = slices.Clone(r.UpdateOffArgs)
 		}
 	}
-	if st.mode() == AuthSeparate {
-		l.Home = m.separateHome(name)
-		if err := os.MkdirAll(l.Home, 0o700); err != nil {
-			return l, fmt.Errorf("make the login home of %s: %w", name, err)
-		}
-		maps.Copy(l.Env, m.o.Facts.LoginEnv(h, l.Home))
+	home, henv, err := m.prepareHome(name, st)
+	if err != nil {
+		return l, err
 	}
+	l.Home = home
+	maps.Copy(l.Env, henv)
 	maps.Copy(l.Env, env)
 	return l, nil
 }
@@ -530,6 +579,7 @@ func (m *Manager) changeState(ctx context.Context, name string, f func(*state)) 
 		return false, err
 	}
 	before := s
+	before.Files = maps.Clone(s.Files)
 	f(&s)
 	if reflect.DeepEqual(before, s) {
 		return false, nil
@@ -558,7 +608,7 @@ func (m *Manager) authState(ctx context.Context, name string, mode AuthMode, env
 	}
 	home := ""
 	if mode == AuthSeparate {
-		home = m.separateHome(name)
+		home = m.loginHome(name)
 	}
 	st, err := m.o.Facts.AuthStatus(ctx, h, home)
 	if err != nil {

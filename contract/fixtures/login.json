@@ -1,6 +1,10 @@
 {
   "harness": "claude",
+  "phase": "awaiting_code",
   "url": "https://login.example.com/device",
   "code": "ABCD-1234",
+  "await_code": true,
+  "session": "ses_01",
+  "screen": "Paste code here:",
   "started_at": "2026-10-30T12:00:00Z"
 }

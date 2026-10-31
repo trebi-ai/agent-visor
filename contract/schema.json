@@ -127,6 +127,29 @@
       ],
       "type": "object"
     },
+    "FileContent": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "etag": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "side": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "side",
+        "content",
+        "etag"
+      ],
+      "type": "object"
+    },
     "Frame": {
       "properties": {
         "code": {
@@ -200,6 +223,12 @@
           },
           "type": "array"
         },
+        "history": {
+          "items": {
+            "$ref": "#/$defs/Update"
+          },
+          "type": "array"
+        },
         "installable": {
           "type": "boolean"
         },
@@ -211,6 +240,10 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "kept_at": {
+          "format": "date-time",
+          "type": "string"
         },
         "latest": {
           "type": "string"
@@ -233,10 +266,19 @@
         "path": {
           "type": "string"
         },
+        "pending": {
+          "type": "boolean"
+        },
         "source": {
           "type": "string"
         },
         "supported": {
+          "type": "boolean"
+        },
+        "updates": {
+          "type": "string"
+        },
+        "updating": {
           "type": "boolean"
         },
         "version": {
@@ -249,7 +291,8 @@
         "installable",
         "supported",
         "auth_mode",
-        "auth"
+        "auth",
+        "updates"
       ],
       "type": "object"
     },
@@ -272,6 +315,67 @@
         "client",
         "build",
         "protocol"
+      ],
+      "type": "object"
+    },
+    "HomeFile": {
+      "properties": {
+        "backup_until": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "blocked": {
+          "type": "boolean"
+        },
+        "format": {
+          "type": "string"
+        },
+        "home_path": {
+          "type": "string"
+        },
+        "hooks": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "locked": {
+          "type": "boolean"
+        },
+        "login": {
+          "type": "boolean"
+        },
+        "own_since": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "shared": {
+          "type": "boolean"
+        },
+        "user_changed_since_own": {
+          "type": "boolean"
+        },
+        "user_exists": {
+          "type": "boolean"
+        },
+        "user_modified_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "user_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "kind",
+        "shared",
+        "user_path",
+        "home_path",
+        "user_exists"
       ],
       "type": "object"
     },
@@ -440,6 +544,10 @@
         "done": {
           "type": "boolean"
         },
+        "ended_at": {
+          "format": "date-time",
+          "type": "string"
+        },
         "error": {
           "type": "string"
         },
@@ -452,6 +560,15 @@
         "in_app": {
           "type": "boolean"
         },
+        "phase": {
+          "type": "string"
+        },
+        "screen": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        },
         "started_at": {
           "format": "date-time",
           "type": "string"
@@ -461,8 +578,17 @@
         }
       },
       "required": [
-        "harness"
+        "harness",
+        "phase"
       ],
+      "type": "object"
+    },
+    "LoginSpec": {
+      "properties": {
+        "provider": {
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "MCPServer": {
@@ -982,6 +1108,34 @@
       ],
       "type": "object"
     },
+    "Update": {
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "from": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "outside": {
+          "type": "boolean"
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "at",
+        "ok"
+      ],
+      "type": "object"
+    },
     "UpgradeSpec": {
       "properties": {
         "binary": {
@@ -1120,6 +1274,17 @@
       ],
       "type": "object"
     },
+    "codeRequest": {
+      "properties": {
+        "code": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "type": "object"
+    },
     "envRequest": {
       "properties": {
         "env": {
@@ -1160,6 +1325,20 @@
       ],
       "type": "object"
     },
+    "fileWrite": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "if_match": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "type": "object"
+    },
     "handoverRequest": {
       "properties": {
         "to": {
@@ -1196,6 +1375,17 @@
       ],
       "type": "object"
     },
+    "ownRequest": {
+      "properties": {
+        "start": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "start"
+      ],
+      "type": "object"
+    },
     "pasteRequest": {
       "properties": {
         "text": {
@@ -1215,6 +1405,31 @@
       },
       "required": [
         "delivery"
+      ],
+      "type": "object"
+    },
+    "tokenRequest": {
+      "properties": {
+        "token": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "type": "object"
+    },
+    "updatesRequest": {
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode"
       ],
       "type": "object"
     },
@@ -1254,6 +1469,15 @@
       },
       "type": "array"
     },
+    "file_content": {
+      "$ref": "#/$defs/FileContent"
+    },
+    "file_own": {
+      "$ref": "#/$defs/ownRequest"
+    },
+    "file_write": {
+      "$ref": "#/$defs/fileWrite"
+    },
     "handover": {
       "$ref": "#/$defs/handoverRequest"
     },
@@ -1266,11 +1490,20 @@
     "harness_env": {
       "$ref": "#/$defs/envRequest"
     },
+    "harness_updates": {
+      "$ref": "#/$defs/updatesRequest"
+    },
     "harness_version": {
       "$ref": "#/$defs/versionRequest"
     },
     "hello": {
       "$ref": "#/$defs/Hello"
+    },
+    "home_files": {
+      "items": {
+        "$ref": "#/$defs/HomeFile"
+      },
+      "type": "array"
     },
     "hook_call": {
       "$ref": "#/$defs/HookCall"
@@ -1295,6 +1528,15 @@
     },
     "login": {
       "$ref": "#/$defs/Login"
+    },
+    "login_code": {
+      "$ref": "#/$defs/codeRequest"
+    },
+    "login_spec": {
+      "$ref": "#/$defs/LoginSpec"
+    },
+    "login_token": {
+      "$ref": "#/$defs/tokenRequest"
     },
     "output": {
       "$ref": "#/$defs/outputReply"

@@ -11,3 +11,5 @@ detail       -
 auth mode    separate
 auth         ok
 env keys     API_TOKEN
+updates      -
+pending      false

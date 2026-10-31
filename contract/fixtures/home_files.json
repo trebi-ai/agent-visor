@@ -1,0 +1,25 @@
+[
+  {
+    "key": "login",
+    "kind": "link",
+    "shared": true,
+    "login": true,
+    "locked": true,
+    "user_path": "/home/u/.claude/.credentials.json",
+    "home_path": "/home/u/.example/visor/harness/claude/.credentials.json",
+    "user_exists": true,
+    "user_modified_at": "2026-10-30T12:00:00Z"
+  },
+  {
+    "key": "settings_prefs",
+    "kind": "keys",
+    "format": "json",
+    "shared": false,
+    "user_path": "/home/u/.claude/settings.json",
+    "home_path": "/home/u/.example/visor/harness/claude/settings.json",
+    "user_exists": true,
+    "own_since": "2026-10-30T12:00:00Z",
+    "user_changed_since_own": true,
+    "backup_until": "2026-10-30T12:00:00Z"
+  }
+]

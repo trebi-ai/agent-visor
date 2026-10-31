@@ -69,7 +69,13 @@ type Visor interface {
 	InstallHarness(ctx context.Context, name, version string) (agentvisor.Harness, error)
 	UpdateHarness(ctx context.Context, name, version string) (agentvisor.Harness, error)
 	SetHarnessAuth(ctx context.Context, name string, mode agentvisor.AuthMode) (agentvisor.Harness, error)
-	LoginHarness(ctx context.Context, name string) (agentvisor.Login, error)
+	SetHarnessUpdates(ctx context.Context, name string, mode agentvisor.UpdateMode, version string) (agentvisor.Harness, error)
+	CheckHarnesses(ctx context.Context) error
+	LoginHarness(ctx context.Context, name string, spec agentvisor.LoginSpec) (agentvisor.Login, error)
+	HarnessLoginCode(ctx context.Context, name, code string) (agentvisor.Login, error)
+	HarnessFiles(ctx context.Context, name string) ([]agentvisor.HomeFile, error)
+	ShareHarnessFile(ctx context.Context, name, key string) (agentvisor.HomeFile, error)
+	OwnHarnessFile(ctx context.Context, name, key string, start agentvisor.OwnStart) (agentvisor.HomeFile, error)
 	LogoutHarness(ctx context.Context, name string) error
 	HarnessModels(ctx context.Context, name string) ([]agentvisor.Model, error)
 	Close(ctx context.Context) error

@@ -145,8 +145,33 @@ func (f *fakeVisor) SetHarnessAuth(context.Context, string, agentvisor.AuthMode)
 	return agentvisor.Harness{}, agentvisor.ErrUnsupported
 }
 
-func (f *fakeVisor) LoginHarness(_ context.Context, name string) (agentvisor.Login, error) {
-	return agentvisor.Login{Harness: name, URL: "https://login.example/device", Code: "ABCD-1234"}, nil
+func (f *fakeVisor) SetHarnessUpdates(context.Context, string, agentvisor.UpdateMode, string) (agentvisor.Harness, error) {
+	return agentvisor.Harness{}, agentvisor.ErrUnsupported
+}
+
+func (f *fakeVisor) CheckHarnesses(context.Context) error { return nil }
+
+func (f *fakeVisor) LoginHarness(_ context.Context, name string, _ agentvisor.LoginSpec) (agentvisor.Login, error) {
+	return agentvisor.Login{Harness: name, Phase: agentvisor.LoginBrowser, URL: "https://login.example/device", Code: "ABCD-1234"}, nil
+}
+
+func (f *fakeVisor) HarnessLoginCode(context.Context, string, string) (agentvisor.Login, error) {
+	return agentvisor.Login{}, agentvisor.ErrUnsupported
+}
+
+func (f *fakeVisor) HarnessFiles(context.Context, string) ([]agentvisor.HomeFile, error) {
+	return []agentvisor.HomeFile{
+		{Key: "login", Kind: "link", Shared: true, Login: true, Locked: true, UserPath: "/home/u/.claude/.credentials.json", HomePath: "/visor/harness/claude/.credentials.json"},
+		{Key: "settings_prefs", Kind: "keys", Format: "json", UserPath: "/home/u/.claude/settings.json", HomePath: "/visor/harness/claude/settings.json"},
+	}, nil
+}
+
+func (f *fakeVisor) ShareHarnessFile(context.Context, string, string) (agentvisor.HomeFile, error) {
+	return agentvisor.HomeFile{}, agentvisor.ErrUnsupported
+}
+
+func (f *fakeVisor) OwnHarnessFile(context.Context, string, string, agentvisor.OwnStart) (agentvisor.HomeFile, error) {
+	return agentvisor.HomeFile{}, agentvisor.ErrUnsupported
 }
 
 func (f *fakeVisor) LogoutHarness(context.Context, string) error { return agentvisor.ErrUnsupported }
@@ -188,6 +213,7 @@ func TestGolden(t *testing.T) {
 		"harness_show.txt":   {"harness", "show", "claude"},
 		"harness_models.txt": {"harness", "models", "claude"},
 		"harness_login.txt":  {"harness", "login", "codex"},
+		"harness_files.txt":  {"harness", "files", "claude"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

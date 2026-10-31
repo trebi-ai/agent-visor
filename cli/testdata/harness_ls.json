@@ -16,7 +16,8 @@
     "auth": "ok",
     "env_keys": [
       "API_TOKEN"
-    ]
+    ],
+    "updates": ""
   },
   {
     "name": "codex",
@@ -27,7 +28,8 @@
     "installable": true,
     "supported": true,
     "auth_mode": "shared",
-    "auth": "missing"
+    "auth": "missing",
+    "updates": ""
   },
   {
     "name": "gemini",
@@ -36,6 +38,7 @@
     "supported": false,
     "detail": "not installed",
     "auth_mode": "shared",
-    "auth": "unknown"
+    "auth": "unknown",
+    "updates": ""
   }
 ]

@@ -34,8 +34,9 @@ case "\$1" in
 --version) echo "$ver (Fake)";;
 auth)
   if [ "\$2" = logout ]; then rm -f "\$FAKEH_HOME/cred"; exit 0; fi
-  echo "Open https://login.example.test/device to log in."
-  echo "Then type the code ABCD-EFGH."
+  if [ "\$2" = paste ]; then echo "Paste code here:"; read c; [ "\$c" = XYZ ] && touch "\$FAKEH_HOME/cred"; exit 0; fi
+  if [ "\$2" = token ]; then echo "Your token: sk-ant-oat01-abcDEF123"; sleep 0.5; exit 0; fi
+  printf "Open https://login.example.test/device to log in.\nThen type the code ABCD-EFGH.\n"
   sleep 0.3
   [ -n "\$FAKEH_HOME" ] && touch "\$FAKEH_HOME/cred"
   ;;
@@ -56,6 +57,7 @@ type fakeWire struct {
 type rig struct {
 	m       *Manager
 	home    string
+	user    string
 	wire    *fakeWire
 	inUse   atomic.Bool
 	changes chan string
@@ -68,6 +70,9 @@ func (w *fakeWire) Detect(_ context.Context, h agentwire.Harness) (agentwire.Det
 	d := agentwire.Detection{Harness: h}
 	if w.system != "" {
 		d.Path, d.Version, d.Supported = w.system, "1.0.0 (Fake)", true
+		if _, err := os.Stat(w.system); err == nil {
+			d.Version = w.Version(context.Background(), w.system)
+		}
 	}
 	return d, nil
 }
@@ -273,7 +278,7 @@ func TestAuthModeAndLogin(t *testing.T) {
 		t.Fatalf("separate launch: %+v %v", l, err)
 	}
 
-	login, err := r.m.Login(ctx, "fakeh")
+	login, err := r.m.Login(ctx, "fakeh", LoginSpec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +291,7 @@ func TestAuthModeAndLogin(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if h.Login == nil && h.Auth == AuthOK {
+		if h.Login != nil && h.Login.Phase == LoginDone && h.Auth == AuthOK {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -318,11 +323,11 @@ func TestAuthModeAndLogin(t *testing.T) {
 func TestLoginInAppAndMissing(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
-	if _, err := r.m.Login(t.Context(), "fakeh"); !errors.Is(err, ErrState) {
+	if _, err := r.m.Login(t.Context(), "fakeh", LoginSpec{}); !errors.Is(err, ErrState) {
 		t.Fatalf("login with no install: %v", err)
 	}
-	r.m.o.Facts.LoginCommand = func(agentwire.Harness) []string { return []string{"fakeh"} }
-	l, err := r.m.Login(t.Context(), "fakeh")
+	r.m.o.Facts.LoginCommand = func(agentwire.Harness, agentwire.LoginOptions) ([]string, error) { return []string{"fakeh"}, nil }
+	l, err := r.m.Login(t.Context(), "fakeh", LoginSpec{})
 	if err != nil || !l.InApp {
 		t.Fatalf("in-app login: %+v %v", l, err)
 	}
@@ -351,7 +356,7 @@ func TestEnvStaysSecret(t *testing.T) {
 	if _, err := r.m.Install(ctx, "fakeh", "1.0.0"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.m.Login(ctx, "fakeh"); err != nil {
+	if _, err := r.m.Login(ctx, "fakeh", LoginSpec{}); err != nil {
 		t.Fatal(err)
 	}
 	list, err := r.m.List(ctx)
@@ -452,7 +457,7 @@ func newRig(t *testing.T) *rig {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() }) // test cleanup
-	r := &rig{home: home, wire: &fakeWire{latest: "2.0.0"}, changes: make(chan string, 256), logs: &bytes.Buffer{}}
+	r := &rig{home: home, user: filepath.Join(home, "user"), wire: &fakeWire{latest: "2.0.0"}, changes: make(chan string, 256), logs: &bytes.Buffer{}}
 	var logMu sync.Mutex
 	r.m = New(home, st, r.wire, Options{
 		Names: []string{"fakeh", "claude"},
@@ -460,9 +465,12 @@ func newRig(t *testing.T) *rig {
 		Facts: Facts{
 			Recipe: func(h agentwire.Harness) (agentwire.InstallRecipe, bool) {
 				return agentwire.InstallRecipe{Harness: h, Method: agentwire.InstallNPM, Package: "fake-pkg", Bin: "fakeh",
-					UpdateOffEnv: map[string]string{"FAKEH_NO_UPDATE": "1"}, UpdateOffArgs: []string{"--no-update"}}, true
+					UpdateOffEnv: map[string]string{"FAKEH_NO_UPDATE": "1"}, UpdateOffArgs: []string{"--no-update"},
+					Update: []string{"update"}, UpdateTo: []string{"update", "--to"}}, true
 			},
-			LoginCommand:    func(agentwire.Harness) []string { return []string{"fakeh", "auth", "login"} },
+			LoginCommand: func(agentwire.Harness, agentwire.LoginOptions) ([]string, error) {
+				return []string{"fakeh", "auth", "login"}, nil
+			},
 			LogoutCommand:   func(agentwire.Harness) []string { return []string{"fakeh", "auth", "logout"} },
 			LoginEnv:        fakeLoginEnv,
 			CredentialFiles: func(agentwire.Harness) []string { return []string{"cred"} },
@@ -476,6 +484,18 @@ func newRig(t *testing.T) *rig {
 				return agentwire.AuthMissing, nil
 			},
 		},
+		Policy: Policy{
+			MCPServers:  []agentwire.MCPServer{{Name: "tool", Command: "/bin/tool", Args: []string{"mcp"}}},
+			NoUserHooks: true,
+			Keys:        map[string][]agentwire.HomeKey{"claude": {{File: ".claude.json", Key: "chrome", Value: false}}},
+			Files: func(name, _ string) map[string][]byte {
+				if name != "claude" {
+					return nil
+				}
+				return map[string][]byte{"product.json": []byte(`{"p":1}`)}
+			},
+		},
+		UserHome:  r.user,
 		LoginWait: 5 * time.Second,
 		InUse:     func(string) bool { return r.inUse.Load() },
 		OnChange:  func(name string) { r.changes <- name },

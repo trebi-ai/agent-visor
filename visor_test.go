@@ -49,7 +49,18 @@ type api interface {
 	InstallHarness(ctx context.Context, name, version string) (Harness, error)
 	UpdateHarness(ctx context.Context, name, version string) (Harness, error)
 	SetHarnessAuth(ctx context.Context, name string, mode AuthMode) (Harness, error)
-	LoginHarness(ctx context.Context, name string) (Login, error)
+	SetHarnessUpdates(ctx context.Context, name string, mode UpdateMode, version string) (Harness, error)
+	CheckHarnesses(ctx context.Context) error
+	LoginHarness(ctx context.Context, name string, spec LoginSpec) (Login, error)
+	HarnessLogin(ctx context.Context, name string) (Login, error)
+	HarnessLoginCode(ctx context.Context, name, code string) (Login, error)
+	HarnessLoginToken(ctx context.Context, name, token string) (Harness, error)
+	CancelHarnessLogin(ctx context.Context, name string) error
+	HarnessFiles(ctx context.Context, name string) ([]HomeFile, error)
+	ShareHarnessFile(ctx context.Context, name, key string) (HomeFile, error)
+	OwnHarnessFile(ctx context.Context, name, key string, start OwnStart) (HomeFile, error)
+	ReadHarnessFile(ctx context.Context, name, key, side string) (FileContent, error)
+	WriteHarnessFile(ctx context.Context, name, key, content, ifMatch string) (FileContent, error)
 	LogoutHarness(ctx context.Context, name string) error
 	HarnessModels(ctx context.Context, name string) ([]Model, error)
 	SetHarnessEnv(ctx context.Context, name string, env map[string]string) error

@@ -1,3 +1,4 @@
 harness  codex
+phase    awaiting_browser
 open     https://login.example/device
 code     ABCD-1234

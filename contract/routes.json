@@ -32,8 +32,19 @@
   "POST /v1/harnesses/{name}/install",
   "POST /v1/harnesses/{name}/update",
   "PUT /v1/harnesses/{name}/auth",
+  "PUT /v1/harnesses/{name}/updates",
+  "POST /v1/harnesses/check",
   "POST /v1/harnesses/{name}/login",
+  "GET /v1/harnesses/{name}/login",
+  "DELETE /v1/harnesses/{name}/login",
+  "POST /v1/harnesses/{name}/login/code",
+  "POST /v1/harnesses/{name}/login/token",
   "POST /v1/harnesses/{name}/logout",
   "GET /v1/harnesses/{name}/models",
-  "PUT /v1/harnesses/{name}/env"
+  "PUT /v1/harnesses/{name}/env",
+  "GET /v1/harnesses/{name}/files",
+  "GET /v1/harnesses/{name}/files/{key}",
+  "PUT /v1/harnesses/{name}/files/{key}",
+  "POST /v1/harnesses/{name}/files/{key}/share",
+  "POST /v1/harnesses/{name}/files/{key}/own"
 ]

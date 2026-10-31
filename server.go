@@ -64,6 +64,7 @@ var errorCodes = []struct {
 	{"closed", ErrClosed, http.StatusServiceUnavailable},
 	{"unsupported", ErrUnsupported, http.StatusNotImplemented},
 	{"protocol", ErrProtocol, http.StatusBadRequest},
+	{"stale", ErrStale, http.StatusPreconditionFailed},
 }
 
 const maxBody = 8 << 20

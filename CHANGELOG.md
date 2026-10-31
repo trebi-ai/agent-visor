@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.2.0 (unreleased)
+
+Breaking: `LoginHarness` takes a `LoginSpec`, and `cli.Visor` has more methods.
+
+- The visor builds the harness home in `harness/<harness>/` from the agent-wire file map. In shared mode the home links the login of the user. Each other file is shared (a link, or a copy of its keys) or an own copy. `Options.Harness.UserHome` sets the user home for tests.
+- Add `HarnessPolicy` in `HarnessOptions.Policy`: the MCP servers of each home, no user hooks, the default share of a file, fixed keys, and product files.
+- Add the files API: `HarnessFiles`, `ShareHarnessFile`, `OwnHarnessFile`, `ReadHarnessFile`, and `WriteHarnessFile`. An own copy keeps a backup for 30 days after a share. A write with an old etag gives `ErrStale` (code `stale`, status 412).
+- Add update modes: `auto` updates to the newest release, and `keep` holds one version and keeps a copy of a system binary. `SetHarnessUpdates` sets the mode. `Harness` has `Updates`, `KeptAt`, `Pending`, `Updating`, and `History`.
+- The visor looks for new releases each `CheckEvery` (default 6 h) and applies the update modes. `HarnessOptions.Enabled` selects the harnesses; nil checks only the visor copies. An update waits while a live session uses the harness, checks the new version and the login, and rolls back when the check fails. A version change from outside the visor goes into the history. `CheckHarnesses` checks now.
+- `InstallHarness` runs the vendor install for a recipe that is not npm.
+- A login runs in a PTY session with the label `visor.login`, so a client can attach to it. `Login` has `Phase`, `Session`, `Screen`, and `EndedAt`. Add `HarnessLogin`, `HarnessLoginCode`, `HarnessLoginToken`, and `CancelHarnessLogin`. A login stays readable for a minute after its end. A separate login of Claude Code uses its token command, and a token goes into the harness env.
+- Add the routes `PUT /v1/harnesses/{name}/updates`, `POST /v1/harnesses/check`, `GET` and `DELETE /v1/harnesses/{name}/login`, `POST .../login/code`, `POST .../login/token`, and `/v1/harnesses/{name}/files/...`, with their fixtures.
+- Add the CLI commands `harness updates`, `harness check`, `harness code`, `harness files`, `harness share`, and `harness own`, and `harness login --provider`.
+- Require agent-wire v0.9.0.
+
 ## v0.1.2 (2026-10-30)
 
 - Fix: a wire holder sends the reply of an open call before its exit. Before, a send that ended the vendor process could lose its reply, and the visor reported "has no process".

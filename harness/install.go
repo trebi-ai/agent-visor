@@ -22,9 +22,10 @@ const (
 
 // Install installs a visor copy of the harness in bin/<name>/<version>/ and
 // moves the current link to it. An empty version is the latest release. A
-// failed install leaves the current link as it was. It returns ErrBusy when
-// a live session uses the harness, because the switch must not change the
-// binary under a running session.
+// harness with no npm recipe runs the vendor install instead, and gets the
+// latest release. A failed install leaves the current link as it was. It
+// returns ErrBusy when a live session uses the harness, because the switch
+// must not change the binary under a running session.
 func (m *Manager) Install(ctx context.Context, name, version string) (Harness, error) {
 	if !m.known(name) {
 		return Harness{}, fmt.Errorf("harness %s: %w", name, ErrNotFound)
@@ -34,9 +35,17 @@ func (m *Manager) Install(ctx context.Context, name, version string) (Harness, e
 		return Harness{}, fmt.Errorf("%w: version %q", ErrInvalid, version)
 	}
 	r, ok := m.o.Facts.Recipe(agentwire.Harness(name))
-	if !ok || r.Method != agentwire.InstallNPM {
-		return Harness{}, fmt.Errorf("%w: the visor cannot install its own copy of %s", ErrUnsupported, name)
+	if ok && r.Method != agentwire.InstallNPM && len(r.Command(version)) > 0 {
+		return m.installSystem(ctx, name, r)
 	}
+	if !ok || r.Method != agentwire.InstallNPM {
+		return Harness{}, fmt.Errorf("%w: the visor cannot install %s", ErrUnsupported, name)
+	}
+	return m.installCopy(ctx, name, r, version)
+}
+
+// installCopy installs a visor copy with the npm recipe and switches to it.
+func (m *Manager) installCopy(ctx context.Context, name string, r agentwire.InstallRecipe, version string) (Harness, error) {
 	done, err := m.begin(name, "install")
 	if err != nil {
 		return Harness{}, err
@@ -68,44 +77,18 @@ func (m *Manager) Install(ctx context.Context, name, version string) (Harness, e
 	return m.Harness(ctx, name)
 }
 
-// Update updates the harness. A visor copy gets a new visor copy. A system
-// install runs the vendor update. Both return ErrBusy when a live session
-// uses the harness.
-func (m *Manager) Update(ctx context.Context, name, version string) (Harness, error) {
-	cur, err := m.Harness(ctx, name)
-	if err != nil {
-		return Harness{}, err
-	}
-	if !cur.Installed {
-		return Harness{}, fmt.Errorf("%w: %s is not installed", ErrState, name)
-	}
-	if cur.Source == SourceVisor {
-		return m.Install(ctx, name, version)
-	}
-	version = strings.TrimPrefix(version, "v")
-	if version != "" && !versionRE.MatchString(version) {
-		return Harness{}, fmt.Errorf("%w: version %q", ErrInvalid, version)
-	}
-	r, ok := m.o.Facts.Recipe(agentwire.Harness(name))
-	argv := r.UpdateCommand(version)
-	if !ok || len(argv) == 0 {
-		return Harness{}, fmt.Errorf("%w: no update for %s", ErrUnsupported, name)
-	}
-	if argv[0] == r.Bin {
-		argv[0] = cur.Path
-	}
-	done, err := m.begin(name, "update")
+// installSystem runs the vendor install, such as a brew formula or an
+// install script. The install goes where the vendor puts it.
+func (m *Manager) installSystem(ctx context.Context, name string, r agentwire.InstallRecipe) (Harness, error) {
+	done, err := m.begin(name, "install")
 	if err != nil {
 		return Harness{}, err
 	}
 	defer done()
-	if m.inUse(name) {
-		return Harness{}, fmt.Errorf("%w: a live session uses %s", ErrBusy, name)
+	if _, err := m.run(ctx, r.Command(""), nil, installTimeout); err != nil {
+		return Harness{}, fmt.Errorf("install %s: %w", name, err)
 	}
-	if _, err := m.run(ctx, argv, nil, installTimeout); err != nil {
-		return Harness{}, fmt.Errorf("update %s: %w", name, err)
-	}
-	m.log.Info("update harness", "harness", name, "version", version)
+	m.log.Info("install harness", "harness", name, "method", r.Method)
 	m.changed(name)
 	return m.Harness(ctx, name)
 }
