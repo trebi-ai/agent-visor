@@ -5,7 +5,8 @@ go 1.26.0
 require (
 	github.com/coder/websocket v1.8.14
 	github.com/creack/pty v1.1.24
-	github.com/trebi-ai/agent-wire v0.8.0
+	github.com/hinshun/vt10x v0.0.0-20220119200601-820417d04eec
+	github.com/trebi-ai/agent-wire v0.9.0
 	github.com/urfave/cli/v3 v3.11.0
 	golang.org/x/term v0.47.0
 	modernc.org/sqlite v1.59.0
@@ -14,7 +15,6 @@ require (
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hinshun/vt10x v0.0.0-20220119200601-820417d04eec // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
