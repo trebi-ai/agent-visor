@@ -164,7 +164,10 @@ func TestCardEvents(t *testing.T) {
 	}
 	pane := "tab1:leaf1"
 	f.setAgent(pane, &Agent{State: AgentWorking, Prompt: "typed in orca", ToolName: "Bash", ToolInput: "ls", StateStartedAt: 1})
-	waitSession(t, v, s.ID, inState(agentvisor.StateRunning))
+	// Wait for the tool, so that the poll saw this card before the next one.
+	waitFor(t, "tool event", func() bool {
+		return slices.ContainsFunc(sessionEvents(t, v, s.ID), func(e agentvisor.Event) bool { return e.Type == agentvisor.EventTool })
+	})
 	f.setAgent(pane, &Agent{State: AgentBlocked, Prompt: "typed in orca", ToolName: "Bash", ToolInput: "rm -rf build", StateStartedAt: 2})
 	got := waitSession(t, v, s.ID, inState(agentvisor.StateWaiting))
 	if len(got.Pending) != 1 || got.Pending[0].Kind != "permission" || got.Pending[0].Input != "rm -rf build" {

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fix a test of the Orca backend that failed when the poll came late.
+
 ## v0.3.1 (2026-11-01)
 
 - Add `orca.Backend.Snapshot` and `orca.Options.OnPoll`. A product can read the Orca state of the last poll in place of a second poll of Orca.
