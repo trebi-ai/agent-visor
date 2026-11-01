@@ -44,7 +44,7 @@ func (b *Backend) detach() {
 // answer, nothing changes.
 func (b *Backend) once(ctx context.Context) {
 	b.mu.Lock()
-	idle := len(b.handles) == 0 && !b.opts.Discover
+	idle := len(b.handles) == 0 && !b.opts.Discover && b.opts.OnPoll == nil
 	b.mu.Unlock()
 	if idle {
 		return
@@ -60,8 +60,25 @@ func (b *Backend) once(ctx context.Context) {
 		}
 		return
 	}
-	agents, dirs := map[string]Agent{}, map[string]string{}
-	for _, w := range wts {
+	snap := Snapshot{Worktrees: wts, Terminals: terms, At: time.Now()}
+	b.mu.Lock()
+	b.last = snap
+	b.mu.Unlock()
+	if b.opts.OnPoll != nil {
+		defer b.opts.OnPoll()
+	}
+	agents, dirs := snap.agents()
+	byPane, byHandle := snap.terminals()
+	b.apply(ctx, agents, byPane, byHandle)
+	if b.opts.Discover {
+		b.discover(ctx, agents, dirs, byPane)
+	}
+}
+
+// agents gives the agent cards and the workspace folders by pane.
+func (s Snapshot) agents() (agents map[string]Agent, dirs map[string]string) {
+	agents, dirs = map[string]Agent{}, map[string]string{}
+	for _, w := range s.Worktrees {
 		if w.IsArchived {
 			continue
 		}
@@ -71,18 +88,21 @@ func (b *Backend) once(ctx context.Context) {
 			}
 		}
 	}
-	byPane, byHandle := map[string]*Terminal{}, map[string]*Terminal{}
-	for i := range terms {
-		t := &terms[i]
+	return agents, dirs
+}
+
+// terminals indexes the terminals by pane and by handle. A pane prefers a
+// terminal that is not orphaned.
+func (s Snapshot) terminals() (byPane, byHandle map[string]*Terminal) {
+	byPane, byHandle = map[string]*Terminal{}, map[string]*Terminal{}
+	for i := range s.Terminals {
+		t := &s.Terminals[i]
 		byHandle[t.Handle] = t
 		if old, ok := byPane[t.PaneKey()]; !ok || old.Orphaned && !t.Orphaned {
 			byPane[t.PaneKey()] = t
 		}
 	}
-	b.apply(ctx, agents, byPane, byHandle)
-	if b.opts.Discover {
-		b.discover(ctx, agents, dirs, byPane)
-	}
+	return byPane, byHandle
 }
 
 // apply gives each handle its events, and ends the handles whose session

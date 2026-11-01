@@ -313,6 +313,7 @@ func (v *Visor) hookHomes(h string, spec HookSpec) ([]hookTarget, error) {
 // the workdir of its folder. It makes none for an end or an ignored event.
 func (v *Visor) observed(ctx context.Context, e hooks.Event, ok bool, labels map[string]string) (*record, error) {
 	if rec := v.findObserved(e); rec != nil || !ok || e.Kind == hooks.KindSessionEnd {
+		v.addLabels(ctx, rec, labels)
 		return rec, nil
 	}
 	if e.Cwd == "" || !filepath.IsAbs(e.Cwd) {
@@ -336,6 +337,7 @@ func (v *Visor) observed(ctx context.Context, e hooks.Event, ok bool, labels map
 	// A second call of the same vendor session can come first.
 	if found := v.findObservedLocked(e); found != nil {
 		v.mu.Unlock()
+		v.addLabels(ctx, found, labels)
 		return found, nil
 	}
 	v.sessions[rec.s.ID] = rec
@@ -345,6 +347,25 @@ func (v *Visor) observed(ctx context.Context, e hooks.Event, ok bool, labels map
 	}
 	v.emit(ctx, rec, Event{Type: EventSessionState, State: StateStarting})
 	return rec, nil
+}
+
+// addLabels gives the labels of a later hook call to an observed session.
+func (v *Visor) addLabels(ctx context.Context, rec *record, labels map[string]string) {
+	if rec == nil || len(labels) == 0 {
+		return
+	}
+	v.mu.Lock()
+	same := matchLabels(labels, rec.s.Labels)
+	v.mu.Unlock()
+	if same {
+		return
+	}
+	v.update(ctx, rec, func(s *Session) {
+		if s.Labels == nil {
+			s.Labels = map[string]string{}
+		}
+		maps.Copy(s.Labels, labels)
+	})
 }
 
 // labeled gives the newest session that has not exited and has each label.

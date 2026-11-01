@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add `orca.Backend.Snapshot` and `orca.Options.OnPoll`. A product can read the Orca state of the last poll in place of a second poll of Orca.
+- Fix: a hook call with labels for an observed session that the visor knows already gives the labels to that session.
+
 ## v0.3.0 (2026-10-31)
 
 - Add the optional backend `backend/orca`. It runs sessions in the terminals of the Orca app, follows the Orca agent cards, answers prompts through the screen, keeps its sessions across a visor restart, and can adopt the agent panes that it did not start.

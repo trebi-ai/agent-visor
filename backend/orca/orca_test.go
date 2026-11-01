@@ -220,8 +220,9 @@ func TestSessionEnds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.setAgent("tab1:leaf1", &Agent{State: AgentWorking, StateStartedAt: 1})
-	waitSession(t, v, exited.ID, inState(agentvisor.StateRunning))
+	// Only the card gives waiting, so the poll saw the card.
+	f.setAgent("tab1:leaf1", &Agent{State: AgentBlocked, StateStartedAt: 1})
+	waitSession(t, v, exited.ID, inState(agentvisor.StateWaiting))
 	f.setAgent("tab1:leaf1", nil)
 	waitSession(t, v, exited.ID, inState(agentvisor.StateExited))
 
@@ -386,6 +387,31 @@ func TestAnswerAndTerminal(t *testing.T) {
 	f.screen = []string{"> plain"}
 	if err := v.Answer(t.Context(), s.ID, "orca-7", agentvisor.Answer{Allow: true}); err == nil {
 		t.Fatal("an answer with no prompt on the screen")
+	}
+}
+
+func TestSnapshot(t *testing.T) {
+	t.Parallel()
+	f := newFakeOrca()
+	f.worktrees = []Worktree{{ID: "w1", Path: "/src/app"}}
+	polled := make(chan struct{}, 1)
+	b, err := New(Options{CLI: f.cli(), Dir: t.TempDir(), Poll: 20 * time.Millisecond, OnPoll: func() {
+		select {
+		case polled <- struct{}{}:
+		default:
+		}
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close(context.Background())
+	select {
+	case <-polled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no poll with no session")
+	}
+	if s := b.Snapshot(); s.At.IsZero() || len(s.Worktrees) != 1 || s.Worktrees[0].ID != "w1" {
+		t.Fatalf("snapshot: %+v", s)
 	}
 }
 

@@ -111,6 +111,23 @@ func TestHookObservedSession(t *testing.T) {
 	})
 }
 
+func TestHookLabelsJoinObserved(t *testing.T) {
+	t.Parallel()
+	v := newPTYVisor(t, shortHome(t), nil)
+	defer v.Close(context.Background())
+	cwd := t.TempDir()
+	first := hookCall(t, v, HookCall{Harness: "claude", Payload: hookPayload(t, "SessionStart", "v-1", cwd, nil)})
+	labels := map[string]string{"pane": "p1"}
+	later := hookCall(t, v, HookCall{Harness: "claude", Labels: labels, Payload: hookPayload(t, "UserPromptSubmit", "v-1", cwd, map[string]any{"prompt": "hi"})})
+	if later.ID != first.ID || later.Labels["pane"] != "p1" {
+		t.Fatalf("a later call with labels: %+v", later)
+	}
+	again := hookCall(t, v, HookCall{Harness: "claude", Labels: labels, Payload: hookPayload(t, "Stop", "v-1", cwd, nil)})
+	if again.ID != first.ID {
+		t.Fatalf("the labels join: %+v", again)
+	}
+}
+
 func TestHookErrors(t *testing.T) {
 	t.Parallel()
 	eachHost(t, func(t *testing.T, open opener) {

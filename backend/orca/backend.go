@@ -83,7 +83,17 @@ type Options struct {
 	// ShellWait is the pause between two looks for the first shell of a new
 	// workspace. Zero is 300 ms.
 	ShellWait time.Duration
-	Logger    *slog.Logger
+	// OnPoll runs after each read of the Orca state. With OnPoll, the backend
+	// reads Orca also when it has no session.
+	OnPoll func()
+	Logger *slog.Logger
+}
+
+// Snapshot is the Orca state of the last read.
+type Snapshot struct {
+	Worktrees []Worktree
+	Terminals []Terminal
+	At        time.Time // zero before the first read
 }
 
 // Backend hosts agent sessions in Orca terminals.
@@ -97,6 +107,7 @@ type Backend struct {
 	reported map[string]bool    // found panes that wait for Adopt
 	found    chan agentvisor.Found
 	wake     chan struct{}
+	last     Snapshot
 
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -133,6 +144,14 @@ func New(o Options) (*Backend, error) {
 
 // CLI gives the Orca CLI of the backend.
 func (b *Backend) CLI() *CLI { return b.cli }
+
+// Snapshot gives the Orca state of the last read. A consumer can read it in
+// place of a second poll of Orca.
+func (b *Backend) Snapshot() Snapshot {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.last
+}
 
 func (b *Backend) Kind() agentvisor.Kind { return Kind }
 
