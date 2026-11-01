@@ -388,6 +388,12 @@
         "harness": {
           "type": "string"
         },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "payload": {},
         "session": {
           "type": "string"

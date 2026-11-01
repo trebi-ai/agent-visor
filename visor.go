@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -198,6 +199,7 @@ func New(ctx context.Context, o Options) (*Visor, error) {
 		_ = v.Close(ctx) // the boot error is the one to report
 		return nil, err
 	}
+	v.discover()
 	v.wg.Add(2)
 	go v.upgradeLoop()
 	go func() {
@@ -725,6 +727,7 @@ func (v *Visor) attach(rec *record, h Handle) {
 	}
 	done := rec.done
 	v.mu.Unlock()
+	v.label(rec, h)
 	v.wg.Add(1)
 	go func() {
 		defer v.wg.Done()
@@ -743,12 +746,39 @@ func (v *Visor) attach(rec *record, h Handle) {
 	}()
 }
 
+// label adds the labels of a Labeler handle to its session.
+func (v *Visor) label(rec *record, h Handle) {
+	l, ok := h.(Labeler)
+	if !ok {
+		return
+	}
+	add := l.Labels()
+	v.mu.Lock()
+	changed := !matchLabels(add, rec.s.Labels)
+	if changed {
+		if rec.s.Labels == nil {
+			rec.s.Labels = map[string]string{}
+		}
+		maps.Copy(rec.s.Labels, add)
+	}
+	v.mu.Unlock()
+	if changed {
+		if err := v.save(v.ctx, rec); err != nil {
+			v.log.Warn("save the session labels", "session_id", rec.s.ID, "err", err)
+		}
+	}
+}
+
 // observe records one backend event and moves the session state.
 func (v *Visor) observe(rec *record, e Event) {
 	ctx := v.ctx
 	switch e.Type {
 	case EventInit:
 		v.update(ctx, rec, func(s *Session) { s.VendorID = cmp.Or(e.VendorID, s.VendorID) })
+		v.mu.Lock()
+		h := rec.h
+		v.mu.Unlock()
+		v.label(rec, h)
 	case EventRequest:
 		if e.Request != nil {
 			v.update(ctx, rec, func(s *Session) {

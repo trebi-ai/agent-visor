@@ -338,20 +338,26 @@ type Screen struct {
 }
 
 // Screen gives the terminal of a session as text.
-func (v *Visor) Screen(_ context.Context, id string) (Screen, error) {
-	ph, err := v.terminal(id)
-	if err != nil {
+func (v *Visor) Screen(ctx context.Context, id string) (Screen, error) {
+	ph, tt, err := v.terminal(id)
+	switch {
+	case err != nil:
 		return Screen{}, err
+	case tt != nil:
+		return tt.Screen(ctx)
 	}
 	return ph.screen(), nil
 }
 
 // Keys writes data to the terminal of a session as typed keys, with no
 // return added.
-func (v *Visor) Keys(_ context.Context, id string, data []byte) error {
-	ph, err := v.terminal(id)
-	if err != nil {
+func (v *Visor) Keys(ctx context.Context, id string, data []byte) error {
+	ph, tt, err := v.terminal(id)
+	switch {
+	case err != nil:
 		return err
+	case tt != nil:
+		return tt.Keys(ctx, data)
 	}
 	return ph.write(data)
 }
@@ -359,23 +365,29 @@ func (v *Visor) Keys(_ context.Context, id string, data []byte) error {
 // Paste writes text to the terminal of a session as one paste, with no
 // return added. When the program asks for bracketed paste, the text goes in
 // the paste markers, so that a newline in it does not submit.
-func (v *Visor) Paste(_ context.Context, id, text string) error {
-	ph, err := v.terminal(id)
-	if err != nil {
+func (v *Visor) Paste(ctx context.Context, id, text string) error {
+	ph, tt, err := v.terminal(id)
+	switch {
+	case err != nil:
 		return err
+	case tt != nil:
+		return tt.Paste(ctx, text)
 	}
 	return ph.write(ph.pasteData(text))
 }
 
 // Output gives the end of the terminal output of a session as plain text,
 // one ring long. It also works after the session ends.
-func (v *Visor) Output(_ context.Context, id string) (string, error) {
+func (v *Visor) Output(ctx context.Context, id string) (string, error) {
 	rec, h, err := v.lookup(id)
 	if err != nil {
 		return "", err
 	}
-	if ph, ok := h.(*ptyHandle); ok {
-		return plainText(ph.tail()), nil
+	switch h := h.(type) {
+	case *ptyHandle:
+		return plainText(h.tail()), nil
+	case TextTerminal:
+		return h.Output(ctx)
 	}
 	v.mu.Lock()
 	kind := rec.s.Kind
@@ -391,20 +403,21 @@ func (v *Visor) Output(_ context.Context, id string) (string, error) {
 	return plainText(raw), nil
 }
 
-// terminal gives the PTY of a live session.
-func (v *Visor) terminal(id string) (*ptyHandle, error) {
+// terminal gives the PTY or the text terminal of a live session.
+func (v *Visor) terminal(id string) (*ptyHandle, TextTerminal, error) {
 	_, h, err := v.lookup(id)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	ph, ok := h.(*ptyHandle)
-	if !ok {
-		if h == nil {
-			return nil, fmt.Errorf("%w: session %s has no process", ErrState, id)
-		}
-		return nil, fmt.Errorf("%w: session %s has no terminal", ErrUnsupported, id)
+	switch h := h.(type) {
+	case *ptyHandle:
+		return h, nil, nil
+	case TextTerminal:
+		return nil, h, nil
+	case nil:
+		return nil, nil, fmt.Errorf("%w: session %s has no process", ErrState, id)
 	}
-	return ph, nil
+	return nil, nil, fmt.Errorf("%w: session %s has no terminal", ErrUnsupported, id)
 }
 
 // View is the view of the attachment.

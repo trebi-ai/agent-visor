@@ -14,7 +14,8 @@ Status: early. The library core works in the process. The socket, the CLI, and t
 - Lets a client attach to a session as a terminal or as a chat view, and hand a session over between the two.
 - Finds projects from paths and manages workdirs: the main checkout, git worktrees, and plain folders.
 - Detects, installs, updates, and logs in to the harnesses (Claude Code, Codex, and others), and lists their models.
-- Takes hook calls from sessions that a user starts outside the visor, and shows them as observed sessions.
+- Takes hook calls from sessions that a user starts outside the visor, and shows them as observed sessions. A hook call can carry labels, which join it to a session of a backend.
+- Takes optional backends. `backend/orca` runs sessions in the terminals of the Orca app.
 - Upgrades itself when no session needs it.
 
 ## How a product uses it
@@ -28,6 +29,25 @@ stream, err := c.Events(ctx, agentvisor.Filter{Session: s.ID}, 0)
 ```
 
 The generic CLI `agent-visor` uses the same API.
+
+## Optional backends
+
+A product registers an optional backend in `Options.Backends`. A backend can also find sessions that it did not start (`Discoverer`), list folders that become projects (`Catalog`), give labels to its sessions (`Labeler`), and give a text terminal (`TextTerminal`).
+
+`backend/orca` drives the `orca` CLI of the Orca app:
+
+- `Start` opens a terminal in an Orca workspace and runs the agent command in it. The env goes in a start script with mode 0700, which removes itself. The label `orca.worktree` picks the workspace, and the label `orca.shell` types the command into a shell that is open.
+- The backend polls the agent cards of Orca. A card gives the state, the tool, the prompt, and the permission requests of the session.
+- `Answer` reads the prompt on the screen and types the choice. `Screen`, `Keys`, and `Paste` use the Orca terminal.
+- A visor restart keeps the sessions: the bindings stay in `Options.Dir`.
+- With `Discover`, the backend reports the agent panes that it did not start, and the visor adopts them.
+- A hook call from an Orca pane joins its session when the hook sends `orca.HookLabels(os.Getenv)`.
+
+The live test runs a script in a new Orca terminal and touches only that terminal:
+
+```bash
+ORCA_LIVE_DIR=$HOME/src/app go test -tags live -run TestLive ./backend/orca/
+```
 
 ## CLI
 

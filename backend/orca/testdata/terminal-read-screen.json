@@ -1,0 +1,28 @@
+{
+  "id": "019ccd50-4755-4b66-a9d2-2f486c4e2bf2",
+  "ok": true,
+  "result": {
+    "terminal": {
+      "handle": "term_81dd0c2f-f49a-4186-8375-67cec004ca47",
+      "status": "running",
+      "truncated": false,
+      "limited": false,
+      "oldestCursor": "0",
+      "nextCursor": "1",
+      "latestCursor": "1",
+      "returnedLineCount": 3,
+      "tail": [
+        "╭───────────────────────────╮",
+        "│ ✻ Welcome to Claude Code! │",
+        "> fix the test"
+      ],
+      "tailRows": [
+        { "wrapped": false, "trailingSpaces": 0 },
+        { "wrapped": false, "trailingSpaces": 0 },
+        { "wrapped": false, "trailingSpaces": 1 }
+      ],
+      "source": "screen"
+    }
+  },
+  "_meta": { "runtimeId": "98867dfb-a6e6-49f0-8541-4c24cfce3c6d" }
+}

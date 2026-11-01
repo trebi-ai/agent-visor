@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Add the optional backend `backend/orca`. It runs sessions in the terminals of the Orca app, follows the Orca agent cards, answers prompts through the screen, keeps its sessions across a visor restart, and can adopt the agent panes that it did not start.
+- Add the optional backend interfaces `TextTerminal`, `Labeler`, `Discoverer` (with `Found`), and `Catalog`. `Screen`, `Keys`, `Paste`, and `Output` work on a `TextTerminal` session.
+- Add `HookCall.Labels`. A hook call with labels joins the newest session with the same labels. An observed session joins a session that a backend adopts later.
+- Fix: a `Send` after the end of the handle gave a state event for a session with no process.
+- Fix the Windows build. CI vets the module for Windows.
+
 ## v0.2.1 (2026-10-31)
 
 - Add `HarnessFacts.Binary`. It finds the program of a harness that agent-wire does not find, such as a test harness of the product. The inventory shows it as a system install, and a login and a logout run it.

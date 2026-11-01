@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -27,8 +28,11 @@ type HookCall struct {
 	Harness string `json:"harness"`
 	// Session is the AGENT_VISOR_SESSION value of the hook process, or empty
 	// for a session that started outside the visor.
-	Session string          `json:"session,omitempty"`
-	Payload json.RawMessage `json:"payload"`
+	Session string `json:"session,omitempty"`
+	// Labels find the session when Session is empty, for example the
+	// terminal of another app. A new observed session gets them.
+	Labels  map[string]string `json:"labels,omitempty"`
+	Payload json.RawMessage   `json:"payload"`
 	// At is when the hook ran. Zero is now.
 	At time.Time `json:"at,omitzero"`
 }
@@ -175,8 +179,10 @@ func (v *Visor) Hook(ctx context.Context, c HookCall) (Session, error) {
 		if rec, _, err = v.lookup(c.Session); err != nil {
 			return Session{}, err
 		}
-	} else if rec, err = v.observed(ctx, e, ok); err != nil || rec == nil {
-		return Session{}, err
+	} else if rec = v.labeled(c.Labels); rec == nil {
+		if rec, err = v.observed(ctx, e, ok, c.Labels); err != nil || rec == nil {
+			return Session{}, err
+		}
 	}
 	data, err := compactJSON(c.Payload)
 	if err != nil {
@@ -305,7 +311,7 @@ func (v *Visor) hookHomes(h string, spec HookSpec) ([]hookTarget, error) {
 
 // observed finds the observed session of a vendor session, or makes one in
 // the workdir of its folder. It makes none for an end or an ignored event.
-func (v *Visor) observed(ctx context.Context, e hooks.Event, ok bool) (*record, error) {
+func (v *Visor) observed(ctx context.Context, e hooks.Event, ok bool, labels map[string]string) (*record, error) {
 	if rec := v.findObserved(e); rec != nil || !ok || e.Kind == hooks.KindSessionEnd {
 		return rec, nil
 	}
@@ -320,7 +326,7 @@ func (v *Visor) observed(ctx context.Context, e hooks.Event, ok bool) (*record, 
 	rec := &record{s: Session{
 		ID: newID("ses"), Project: w.Project, Workdir: w.ID, Kind: KindObserved, Role: RoleAgent, Harness: e.Harness,
 		WorkingDir: e.Cwd, State: StateStarting, VendorID: e.VendorID, Restart: RestartPolicy{Mode: RestartNotify},
-		CreatedAt: now, UpdatedAt: now,
+		Labels: maps.Clone(labels), CreatedAt: now, UpdatedAt: now,
 	}}
 	v.mu.Lock()
 	if v.closed {
@@ -339,6 +345,24 @@ func (v *Visor) observed(ctx context.Context, e hooks.Event, ok bool) (*record, 
 	}
 	v.emit(ctx, rec, Event{Type: EventSessionState, State: StateStarting})
 	return rec, nil
+}
+
+// labeled gives the newest session that has not exited and has each label.
+// Empty labels find none.
+func (v *Visor) labeled(labels map[string]string) *record {
+	if len(labels) == 0 {
+		return nil
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	var out *record
+	for _, rec := range v.sessions {
+		s := rec.s
+		if s.State != StateExited && matchLabels(labels, s.Labels) && (out == nil || s.CreatedAt.After(out.s.CreatedAt)) {
+			out = rec
+		}
+	}
+	return out
 }
 
 func (v *Visor) findObserved(e hooks.Event) *record {

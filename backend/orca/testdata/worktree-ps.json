@@ -1,0 +1,45 @@
+{
+  "id": "ccf7fc5b-bd9a-45f2-9c01-92cecdfa248a",
+  "ok": true,
+  "result": {
+    "worktrees": [
+      {
+        "workspaceKind": "git",
+        "worktreeId": "88171858-3683-42ea-90f2-bb9e46c8a73e::/Users/ada/Projects/app::workspace:0717323b",
+        "repoId": "88171858-3683-42ea-90f2-bb9e46c8a73e",
+        "hostId": "local",
+        "terminalPlatform": "darwin",
+        "repo": "app",
+        "path": "/Users/ada/Projects/app",
+        "branch": "",
+        "isArchived": false,
+        "isMainWorktree": false,
+        "displayName": "ENG-4",
+        "workspaceStatus": "in-progress",
+        "lastActivityAt": 1792287286881,
+        "createdAt": 1792286856502,
+        "comment": "https://app.plane.so/ada/browse/ENG-4/",
+        "liveTerminalCount": 1,
+        "status": "active",
+        "agents": [
+          {
+            "paneKey": "c407c664:2be092f9",
+            "state": "done",
+            "agentType": "claude",
+            "prompt": "work on ENG-4",
+            "lastAssistantMessage": "Done."
+          }
+        ]
+      },
+      {
+        "workspaceKind": "git",
+        "worktreeId": "88171858::/Users/ada/Projects/app::workspace:old",
+        "repo": "app",
+        "path": "/Users/ada/Projects/app",
+        "isArchived": true,
+        "displayName": "ENG-9",
+        "agents": []
+      }
+    ]
+  }
+}

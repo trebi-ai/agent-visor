@@ -61,3 +61,49 @@ type Handle interface {
 	Close(ctx context.Context) error
 	Events() <-chan Event
 }
+
+// TextTerminal is a handle whose terminal the backend shows only as text,
+// for example a terminal in another app. Screen, Keys, Paste, and Output use
+// it.
+type TextTerminal interface {
+	Screen(ctx context.Context) (Screen, error)
+	Keys(ctx context.Context, data []byte) error
+	Paste(ctx context.Context, text string) error
+	// Output gives the end of the terminal output as plain text.
+	Output(ctx context.Context) (string, error)
+}
+
+// Labeler is a handle that adds labels to its session, for example the
+// terminal of another app. The visor reads them at attach and after each
+// init event.
+type Labeler interface {
+	Labels() map[string]string
+}
+
+// Found is a session that a backend found and the visor did not start, for
+// example an agent that the user started in another app.
+type Found struct {
+	// Key names the session in the backend.
+	Key     string
+	Harness string
+	// Dir is the absolute working folder.
+	Dir    string
+	Title  string
+	Labels map[string]string
+}
+
+// Discoverer is a backend that finds sessions that it did not start. The
+// visor makes a session for each one and adopts it. An observed session with
+// the same labels becomes the adopted session.
+type Discoverer interface {
+	// Found gives the new sessions. It closes when the backend closes.
+	Found() <-chan Found
+	// Adopt binds the found session with key to the visor session s.
+	Adopt(ctx context.Context, s Session, key string) (Handle, error)
+}
+
+// Catalog is a backend that knows project folders, for example the repos of
+// another app. The visor makes a project for each folder at boot.
+type Catalog interface {
+	Folders(ctx context.Context) ([]string, error)
+}
