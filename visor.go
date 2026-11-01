@@ -304,30 +304,42 @@ func (v *Visor) Sessions(_ context.Context, f Filter) ([]Session, error) {
 // Send writes a user turn. It resumes a suspended or lost session first;
 // a resume gives DeliveryPrompted.
 func (v *Visor) Send(ctx context.Context, id string, in Input) (Delivery, error) {
-	rec, h, err := v.lookup(id)
-	if err != nil {
-		return "", err
+	for {
+		rec, h, err := v.lookup(id)
+		if err != nil {
+			return "", err
+		}
+		if err := v.handoverBusy(rec); err != nil {
+			return "", err
+		}
+		if h == nil {
+			return DeliveryPrompted, v.resume(ctx, rec, &in, true)
+		}
+		// Move first: a fast result can come before Send returns.
+		gone, err := v.claim(ctx, rec, h)
+		if err != nil {
+			return "", err
+		}
+		if gone != nil {
+			// The handle ended after the lookup. Try again when its end is recorded.
+			select {
+			case <-gone:
+				continue
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+		v.emit(ctx, rec, Event{Type: EventUser, Text: in.Text, Input: true})
+		d, err := h.Send(ctx, in)
+		if errors.Is(err, errHolderEnding) {
+			return DeliveryPrompted, v.resumeAfterEnd(ctx, rec, in)
+		}
+		if err != nil {
+			v.moveIf(ctx, rec, StateRunning, StateIdle)
+			return "", err
+		}
+		return d, nil
 	}
-	if err := v.handoverBusy(rec); err != nil {
-		return "", err
-	}
-	if h == nil {
-		return DeliveryPrompted, v.resume(ctx, rec, &in, true)
-	}
-	v.emit(ctx, rec, Event{Type: EventUser, Text: in.Text, Input: true})
-	// Move first: a fast result can come before Send returns.
-	if err := v.setState(ctx, rec, StateRunning); err != nil {
-		return "", err
-	}
-	d, err := h.Send(ctx, in)
-	if errors.Is(err, errHolderEnding) {
-		return DeliveryPrompted, v.resumeAfterEnd(ctx, rec, in)
-	}
-	if err != nil {
-		v.moveIf(ctx, rec, StateRunning, StateIdle)
-		return "", err
-	}
-	return d, nil
 }
 
 // Interrupt stops the current turn.
@@ -919,6 +931,35 @@ func (v *Visor) forget(ctx context.Context, id string) {
 	if err := newSpecFile(v.opts.Home, id).remove(); err != nil {
 		v.log.Warn("forget session files", "session_id", id, "err", err)
 	}
+}
+
+// claim moves the session to running while h is its handle. When h is not
+// the handle any more, the channel closes after the end of h is recorded.
+func (v *Visor) claim(ctx context.Context, rec *record, h Handle) (<-chan struct{}, error) {
+	v.mu.Lock()
+	if rec.h != h {
+		defer v.mu.Unlock()
+		if rec.h == nil {
+			return rec.done, nil
+		}
+		c := make(chan struct{})
+		close(c)
+		return c, nil
+	}
+	if rec.s.State == StateRunning {
+		v.mu.Unlock()
+		return nil, nil
+	}
+	err := rec.s.move(StateRunning)
+	v.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	if err := v.save(ctx, rec); err != nil {
+		return nil, err
+	}
+	v.emit(ctx, rec, Event{Type: EventSessionState, State: StateRunning})
+	return nil, nil
 }
 
 func (v *Visor) lookup(id string) (*record, Handle, error) {

@@ -317,6 +317,41 @@ func TestHarnessFilesAPI(t *testing.T) {
 	}
 }
 
+// TestClaimAfterHandleEnd is the race of Send: the handle ends between the
+// lookup and the move to running.
+func TestClaimAfterHandleEnd(t *testing.T) {
+	t.Parallel()
+	b := &captureBackend{}
+	v, err := New(t.Context(), Options{Home: t.TempDir(), Backends: []Backend{b}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close(context.Background())
+	s, err := v.Start(t.Context(), StartSpec{Kind: kindCapture, WorkingDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, h, err := v.lookup(s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, v, s.ID, StateExited)
+	gone, err := v.claim(t.Context(), rec, h)
+	if err != nil || gone == nil {
+		t.Fatalf("claim of an ended handle: %v %v", gone, err)
+	}
+	<-gone
+	if _, err := v.Send(t.Context(), s.ID, Input{Text: "late"}); !errors.Is(err, ErrState) {
+		t.Fatalf("send to an exited session: %v", err)
+	}
+	if n := countEvents(sessionEvents(t, v, s.ID), EventUser); n != 0 {
+		t.Fatalf("%d user events after a failed send", n)
+	}
+}
+
 // loginVisor is a visor with a fake harness whose login runs in a PTY. The
 // login asks for a code, and the code XYZ logs it in.
 func loginVisor(t *testing.T, home string) *Visor {
