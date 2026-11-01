@@ -123,6 +123,8 @@ type Visor struct {
 type record struct {
 	s Session
 	h Handle
+	// moving keeps each state change and its event together, so the events have the order of the changes.
+	moving sync.Mutex
 	// ending is the state that the session gets when its handle ends; empty
 	// means exited.
 	ending State
@@ -883,6 +885,8 @@ func (v *Visor) setState(ctx context.Context, rec *record, to State) error {
 
 // move is setState with a guard: an empty from allows each state.
 func (v *Visor) move(ctx context.Context, rec *record, from, to State) error {
+	rec.moving.Lock()
+	defer rec.moving.Unlock()
 	v.mu.Lock()
 	if rec.s.State == to || (from != "" && rec.s.State != from) {
 		v.mu.Unlock()
@@ -966,6 +970,8 @@ func (v *Visor) forget(ctx context.Context, id string) {
 // claim moves the session to running while h is its handle. When h is not
 // the handle any more, the channel closes after the end of h is recorded.
 func (v *Visor) claim(ctx context.Context, rec *record, h Handle) (<-chan struct{}, error) {
+	rec.moving.Lock()
+	defer rec.moving.Unlock()
 	v.mu.Lock()
 	if rec.h != h {
 		defer v.mu.Unlock()
