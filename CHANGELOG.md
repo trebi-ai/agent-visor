@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.3.1 (2026-11-01)
 
 - Add `orca.Backend.Snapshot` and `orca.Options.OnPoll`. A product can read the Orca state of the last poll in place of a second poll of Orca.
 - Fix: a hook call with labels for an observed session that the visor knows already gives the labels to that session.
