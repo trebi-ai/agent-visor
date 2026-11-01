@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"maps"
 	"os"
@@ -64,6 +65,9 @@ type Options struct {
 	// KeepExited is how long the visor keeps an exited session and its
 	// events. Zero keeps them for 7 days.
 	KeepExited time.Duration
+	// KeepFragments is how long the visor keeps the stream fragments of a
+	// failed wire session. Zero keeps them for 30 days.
+	KeepFragments time.Duration
 	// UpgradeWait is how long an upgrade waits for a quiet visor. Zero is
 	// 24 hours. A new protocol major waits 10 minutes at most.
 	UpgradeWait time.Duration
@@ -137,7 +141,10 @@ type record struct {
 // Protocol is the socket protocol version.
 const Protocol = "agent-visor/1"
 
-const defaultKeepExited = 7 * 24 * time.Hour
+const (
+	defaultKeepExited    = 7 * 24 * time.Hour
+	defaultKeepFragments = 30 * 24 * time.Hour
+)
 
 // Errors. The client maps a socket error code back to the same error.
 var (
@@ -160,7 +167,7 @@ func New(ctx context.Context, o Options) (*Visor, error) {
 	if o.Home == "" {
 		return nil, fmt.Errorf("%w: Options.Home is empty", ErrInvalid)
 	}
-	if err := os.MkdirAll(o.Home, 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(o.Home, "fragments"), 0o700); err != nil {
 		return nil, fmt.Errorf("open visor: %w", err)
 	}
 	o = o.withDefaults()
@@ -202,8 +209,9 @@ func New(ctx context.Context, o Options) (*Visor, error) {
 		return nil, err
 	}
 	v.discover()
-	v.wg.Add(2)
+	v.wg.Add(3)
 	go v.upgradeLoop()
+	go v.sweepLoop()
 	go func() {
 		defer v.wg.Done()
 		ctx, cancel := context.WithCancel(v.ctx)
@@ -230,6 +238,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.KeepExited == 0 {
 		o.KeepExited = defaultKeepExited
+	}
+	if o.KeepFragments == 0 {
+		o.KeepFragments = defaultKeepFragments
 	}
 	if o.UpgradeWait == 0 {
 		o.UpgradeWait = defaultUpgradeWait
@@ -396,6 +407,48 @@ func (v *Visor) Stop(ctx context.Context, id string) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// Purge removes an ended session, its events and files, and the files that
+// the vendor keeps for it in the harness home of the visor. It keeps the
+// fragment file. A live session, or a live session with the same vendor
+// session, is an ErrState.
+func (v *Visor) Purge(ctx context.Context, p PurgeSpec) error {
+	if err := p.Validate(); err != nil {
+		return err
+	}
+	v.mu.Lock()
+	rec, known := v.sessions[p.Session]
+	if known {
+		p.Harness = cmp.Or(p.Harness, rec.s.Harness)
+		p.VendorID = cmp.Or(p.VendorID, rec.s.VendorID)
+	}
+	for _, r := range v.sessions {
+		if r.s.State.Live() && (r == rec || (p.VendorID != "" && r.s.VendorID == p.VendorID)) {
+			v.mu.Unlock()
+			return fmt.Errorf("purge %s: session %s is live: %w", cmp.Or(p.Session, p.VendorID), r.s.ID, ErrState)
+		}
+	}
+	if known {
+		delete(v.sessions, p.Session)
+	}
+	v.mu.Unlock()
+	if p.Session != "" {
+		v.forget(ctx, p.Session)
+	}
+	if p.Harness == "" || p.Harness != filepath.Base(p.Harness) {
+		return nil
+	}
+	var errs []error
+	for _, path := range agentwire.SessionFiles(agentwire.Harness(p.Harness), filepath.Join(v.opts.Home, "harness", p.Harness), p.VendorID) {
+		if err := os.RemoveAll(path); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if err := errors.Join(errs...); err != nil {
+		return fmt.Errorf("purge vendor files of %s: %w", p.VendorID, err)
+	}
+	return nil
 }
 
 // Events gives the events after a sequence number that match f: first from
@@ -953,6 +1006,54 @@ func (v *Visor) add(ctx context.Context, rec *record) error {
 	}
 	v.emit(ctx, rec, Event{Type: EventSessionState, State: StateStarting})
 	return nil
+}
+
+// sweepLoop forgets old exited sessions and removes old fragment files,
+// now and then each hour.
+func (v *Visor) sweepLoop() {
+	defer v.wg.Done()
+	t := time.NewTicker(time.Hour)
+	defer t.Stop()
+	for {
+		v.sweep(v.ctx)
+		select {
+		case <-v.quit:
+			return
+		case <-v.ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+func (v *Visor) sweep(ctx context.Context) {
+	var old []string
+	v.mu.Lock()
+	for id, rec := range v.sessions {
+		if rec.s.State == StateExited && time.Since(rec.s.UpdatedAt) > v.opts.KeepExited {
+			old = append(old, id)
+			delete(v.sessions, id)
+		}
+	}
+	v.mu.Unlock()
+	for _, id := range old {
+		v.forget(ctx, id)
+	}
+	dir := filepath.Join(v.opts.Home, "fragments")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		v.log.Warn("read the fragment files", "err", err)
+		return
+	}
+	for _, e := range entries {
+		fi, err := e.Info()
+		if err != nil || e.IsDir() || time.Since(fi.ModTime()) <= v.opts.KeepFragments {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, e.Name())); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			v.log.Warn("remove a fragment file", "file", e.Name(), "err", err)
+		}
+	}
 }
 
 func (v *Visor) forget(ctx context.Context, id string) {

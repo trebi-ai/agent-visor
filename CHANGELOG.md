@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.0 (2026-11-01)
+
+- Add `Purge` (`POST /v1/purge`) on `Visor` and `Client`. It removes an ended session, its events, its files, and the files that the vendor keeps for it in the harness home of the visor (agent-wire `SessionFiles`). With `Harness` and `VendorID` and no `Session`, it removes only the vendor files. It refuses a live session, and a vendor session that a live session uses.
+- The frame log of a wire session leaves out the stream fragments (agent-wire v0.11.0). When the stream fails, the fragments go to `fragments/<id>.ndjson`. `StartSpec.LogFragments` writes every fragment to the frame log.
+- `Options.KeepFragments` (default 30 days) is how long the visor keeps a fragment file.
+- The visor forgets an exited session after `KeepExited` each hour, not only at start.
+
 ## v0.3.3 (2026-11-01)
 
 - Fix: two state changes of one session at the same time could give their events in the wrong order. The last state event then did not agree with the state of the session.

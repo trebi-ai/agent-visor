@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"path/filepath"
 	"strings"
 
 	agentwire "github.com/trebi-ai/agent-wire"
@@ -76,6 +77,30 @@ type StartSpec struct {
 	Labels   map[string]string `json:"labels,omitempty"`
 	Restart  RestartPolicy     `json:"restart"`
 	Raw      map[string]any    `json:"raw,omitempty"`
+	// LogFragments writes every stream fragment to the frame log of a wire
+	// session. By default the frame log keeps fragments only when the
+	// stream fails, in fragments/<id>.ndjson.
+	LogFragments bool `json:"log_fragments,omitempty"`
+}
+
+// PurgeSpec names what Purge removes. Session is a visor session. Harness
+// and VendorID name a vendor session, also one that has no visor session;
+// they default to those of Session.
+type PurgeSpec struct {
+	Session  string `json:"session,omitempty"`
+	Harness  string `json:"harness,omitempty"`
+	VendorID string `json:"vendor_id,omitempty"`
+}
+
+// Validate checks that p names a session or a vendor session.
+func (p PurgeSpec) Validate() error {
+	if p.Session == "" && (p.Harness == "" || p.VendorID == "") {
+		return fmt.Errorf("%w: purge needs a session, or a harness and a vendor id", ErrInvalid)
+	}
+	if p.Harness != "" && p.Harness != filepath.Base(p.Harness) {
+		return fmt.Errorf("%w: harness %q is not a name", ErrInvalid, p.Harness)
+	}
+	return nil
 }
 
 // Permissions is the permission policy of a session.

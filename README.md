@@ -17,6 +17,8 @@ Status: early. The library core works in the process. The socket, the CLI, and t
 - Takes hook calls from sessions that a user starts outside the visor, and shows them as observed sessions. A hook call can carry labels, which join it to a session of a backend.
 - Takes optional backends. `backend/orca` runs sessions in the terminals of the Orca app.
 - Upgrades itself when no session needs it.
+- Keeps a short frame log of each wire session with no stream fragments. When a stream fails, it keeps the fragments in `fragments/<id>.ndjson` for 30 days (`Options.KeepFragments`). It forgets an exited session after 7 days (`Options.KeepExited`).
+- `Purge` removes an ended session at once: its events, its files, and the transcript that the vendor keeps for it in the harness home of the visor.
 
 ## How a product uses it
 

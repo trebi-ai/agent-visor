@@ -36,8 +36,11 @@ type WireConfig struct {
 	Instructions string                     `json:"instructions,omitempty"`
 	ExtraArgs    []string                   `json:"extra_args,omitempty"`
 	Raw          map[string]any             `json:"raw,omitempty"`
-	// FrameLog gets each frame in and out, mode 0600.
+	// FrameLog gets the frames in and out, mode 0600.
 	FrameLog string `json:"frame_log,omitempty"`
+	// FragmentLog gets the stream fragments when the stream fails.
+	FragmentLog  string `json:"fragment_log,omitempty"`
+	LogFragments bool   `json:"log_fragments,omitempty"`
 	// Ledger is the agent-wire process ledger of the session.
 	Ledger        string `json:"ledger,omitempty"`
 	ClientName    string `json:"client_name,omitempty"`
@@ -164,6 +167,7 @@ func (s *wireServer) open(ctx context.Context) (agentwire.Session, error) {
 		Harness: agentwire.Harness(w.Harness), Binary: w.Binary, WorkingDir: w.WorkingDir, Env: w.Env, Home: w.Home,
 		Model: w.Model, Effort: w.Effort, Permissions: w.Permissions, MCPServers: w.MCPServers, Skills: w.Skills,
 		Instructions: w.Instructions, ExtraArgs: w.ExtraArgs, Raw: w.Raw, LogPath: w.FrameLog,
+		FragmentLogPath: w.FragmentLog, LogFragments: w.LogFragments,
 	}
 	if w.Resume {
 		req.SessionID = w.VendorID

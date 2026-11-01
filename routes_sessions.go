@@ -11,6 +11,7 @@ func (s *Server) sessionRoutes() []route {
 		{"POST /v1/sessions/{id}/send", s.sendSession},
 		{"POST /v1/sessions/{id}/interrupt", s.interruptSession},
 		{"POST /v1/sessions/{id}/answer", s.answerSession},
+		{"POST /v1/purge", s.purge},
 	}
 }
 
@@ -72,4 +73,12 @@ func (s *Server) answerSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.reply(w, http.StatusNoContent, nil, s.v.Answer(r.Context(), r.PathValue("id"), a.RequestID, a.Answer))
+}
+
+func (s *Server) purge(w http.ResponseWriter, r *http.Request) {
+	var p PurgeSpec
+	if !s.decode(w, r, &p) {
+		return
+	}
+	s.reply(w, http.StatusNoContent, nil, s.v.Purge(r.Context(), p))
 }

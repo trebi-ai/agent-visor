@@ -6,7 +6,7 @@ require (
 	github.com/coder/websocket v1.8.14
 	github.com/creack/pty v1.1.24
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
-	github.com/trebi-ai/agent-wire v0.9.0
+	github.com/trebi-ai/agent-wire v0.11.0
 	github.com/urfave/cli/v3 v3.11.0
 	golang.org/x/term v0.47.0
 	modernc.org/sqlite v1.59.0

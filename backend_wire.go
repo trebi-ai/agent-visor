@@ -182,7 +182,9 @@ func (b *wireBackend) request(l Launch) agentwire.StartRequest {
 		Harness: agentwire.Harness(l.Spec.Harness), Binary: l.Binary, WorkingDir: l.Dir, Env: l.Env, Home: l.Home,
 		Model: l.Spec.Model, Effort: l.Spec.Effort, Permissions: l.Spec.Permissions.wire(), MCPServers: wireMCPServers(l.Spec.MCPServers),
 		Skills: wireSkills(l.Spec.Skills), Instructions: l.Spec.Instructions, ExtraArgs: l.Spec.ExtraArgs, Raw: l.Spec.Raw,
-		LogPath: filepath.Join(b.home, "sessions", l.Session.ID, "frames.ndjson"),
+		LogPath:         filepath.Join(b.home, "sessions", l.Session.ID, "frames.ndjson"),
+		FragmentLogPath: filepath.Join(b.home, "fragments", l.Session.ID+".ndjson"),
+		LogFragments:    l.Spec.LogFragments,
 	}
 }
 
@@ -221,7 +223,7 @@ func (b *wireBackend) startHeld(ctx context.Context, l Launch) (Handle, error) {
 			Harness: string(req.Harness), Binary: req.Binary, WorkingDir: req.WorkingDir, Env: req.Env, Home: req.Home,
 			Resume: l.Resume, VendorID: l.Session.VendorID, Model: req.Model, Effort: req.Effort, Permissions: req.Permissions,
 			MCPServers: req.MCPServers, Skills: req.Skills, Instructions: req.Instructions, ExtraArgs: req.ExtraArgs, Raw: req.Raw,
-			FrameLog: req.LogPath, Ledger: filepath.Join(b.home, "sessions", id, "ledger.json"),
+			FrameLog: req.LogPath, FragmentLog: req.FragmentLogPath, LogFragments: req.LogFragments, Ledger: filepath.Join(b.home, "sessions", id, "ledger.json"),
 			ClientName: b.client, ClientVersion: b.clientVersion,
 		},
 	}

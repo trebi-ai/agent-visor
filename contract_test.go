@@ -59,6 +59,7 @@ func contractFixtures() []fixture {
 		{"hello", Hello{Client: "example", Build: "v1.2.3", Protocol: Protocol, Binary: "/usr/local/bin/example"}},
 		{"info", Info{Build: "v1.2.3", Protocol: Protocol, Client: "example", Home: "/home/u/.example/visor", Seq: 42, Upgrade: "v1.2.4", PID: 4242}},
 		{"upgrade_spec", UpgradeSpec{Binary: "/usr/local/bin/example", Build: "v1.2.4", Protocol: Protocol}},
+		{"purge_spec", PurgeSpec{Session: "ses_1", Harness: "claude", VendorID: "56fc5395-9134-4a60-9bfb-6d2048569e1c"}},
 		{"error", errorBody{Error: errorInfo{Code: "not_found", Message: "session ses_1: agentvisor: not found"}}},
 		{"start_spec", StartSpec{
 			Harness: "claude", Model: "sonnet", Effort: "high", Binary: "/usr/local/bin/claude", WorkingDir: "/src/app", Prompt: "Fix the test.",

@@ -706,6 +706,20 @@
       ],
       "type": "object"
     },
+    "PurgeSpec": {
+      "properties": {
+        "harness": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        },
+        "vendor_id": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "Request": {
       "properties": {
         "id": {
@@ -1001,6 +1015,9 @@
             "type": "string"
           },
           "type": "object"
+        },
+        "log_fragments": {
+          "type": "boolean"
         },
         "mcp_servers": {
           "items": {
@@ -1552,6 +1569,9 @@
     },
     "project": {
       "$ref": "#/$defs/Project"
+    },
+    "purge_spec": {
+      "$ref": "#/$defs/PurgeSpec"
     },
     "screen": {
       "$ref": "#/$defs/Screen"

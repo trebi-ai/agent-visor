@@ -30,6 +30,7 @@ type api interface {
 	Interrupt(ctx context.Context, id string) error
 	Answer(ctx context.Context, id, requestID string, a Answer) error
 	Stop(ctx context.Context, id string) error
+	Purge(ctx context.Context, p PurgeSpec) error
 	Events(ctx context.Context, f Filter, after uint64) (*EventStream, error)
 	Projects(ctx context.Context, f Filter) ([]Project, error)
 	ForgetProject(ctx context.Context, id string) error

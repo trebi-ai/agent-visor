@@ -9,6 +9,7 @@
   "POST /v1/sessions/{id}/send",
   "POST /v1/sessions/{id}/interrupt",
   "POST /v1/sessions/{id}/answer",
+  "POST /v1/purge",
   "GET /v1/projects",
   "DELETE /v1/projects/{id}",
   "GET /v1/workdirs",

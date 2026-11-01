@@ -119,6 +119,11 @@ func (c *Client) Stop(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodDelete, "/v1/sessions/"+url.PathEscape(id), nil, nil)
 }
 
+// Purge removes an ended session and the vendor files of it.
+func (c *Client) Purge(ctx context.Context, p PurgeSpec) error {
+	return c.do(ctx, http.MethodPost, "/v1/purge", p, nil)
+}
+
 // Events gives the events after a sequence number that match f. The stream
 // connects again after a drop or a visor restart, and continues after the
 // last event that it gave.
