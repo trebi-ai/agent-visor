@@ -3,7 +3,6 @@ package agentvisor
 import (
 	"context"
 	"errors"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -127,7 +126,7 @@ func waitVendor(t *testing.T, v *Visor, id string) Session {
 func waitDead(t *testing.T, pid int) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
-	for syscall.Kill(pid, 0) == nil {
+	for alive(pid) {
 		if time.Now().After(deadline) {
 			t.Fatalf("process %d still lives", pid)
 		}

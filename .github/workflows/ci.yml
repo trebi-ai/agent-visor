@@ -36,6 +36,11 @@ jobs:
           cache: false
       - name: go vet
         run: go vet ./...
+      - name: go vet (windows)
+        if: matrix.name == 'linux'
+        env:
+          GOOS: windows
+        run: go vet ./...
       - name: go test
         env:
           CGO_ENABLED: "1"

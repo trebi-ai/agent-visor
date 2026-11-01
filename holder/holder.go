@@ -371,16 +371,15 @@ func (s *server) resize(size Size) {
 // kill ends the process group: a hangup and a terminate first, then a kill
 // after a grace time.
 func (s *server) kill() {
-	pid := s.cmd.Process.Pid
-	_ = syscall.Kill(-pid, syscall.SIGHUP)  // the group can be gone already
-	_ = syscall.Kill(-pid, syscall.SIGTERM) // the group can be gone already
+	s.signal(syscall.SIGHUP)
+	s.signal(syscall.SIGTERM)
 	go func() {
 		t := time.NewTimer(killGrace)
 		defer t.Stop()
 		select {
 		case <-s.exited:
 		case <-t.C:
-			_ = syscall.Kill(-pid, syscall.SIGKILL) // the group can be gone already
+			s.signal(syscall.SIGKILL)
 		}
 	}()
 }

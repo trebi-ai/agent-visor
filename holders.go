@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/trebi-ai/agent-visor/holder"
@@ -61,8 +60,7 @@ func (hs *holders) ensureDirs() error {
 	if err != nil {
 		return fmt.Errorf("check the holder socket folder: %w", err)
 	}
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !fi.IsDir() || fi.Mode().Perm()&0o077 != 0 || !ok || int(st.Uid) != os.Getuid() {
+	if !fi.IsDir() || fi.Mode().Perm()&0o077 != 0 || !ownedByUser(fi) {
 		return fmt.Errorf("%w: %s must be a folder of this user with mode 0700", ErrInvalid, root)
 	}
 	return nil
@@ -100,7 +98,7 @@ func (hs *holders) spawn(ctx context.Context, cfg holder.Config, env []string) (
 	args := append(append([]string{}, hs.cmd[1:]...), cfg.ID)
 	cmd := exec.CommandContext(context.WithoutCancel(ctx), hs.cmd[0], args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr, cmd.Env = bytes.NewReader(data), logf, logf, env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.SysProcAttr = detached()
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start holder: %w", err)
 	}

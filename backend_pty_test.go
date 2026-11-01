@@ -171,8 +171,8 @@ func TestPTYSurvivesVisorRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.waitFrame(func(f Frame) bool { return f.Type == FrameEnded && f.Reason == EndClosed })
-	if err := syscall.Kill(pid, 0); err != nil {
-		t.Fatalf("the process ended with the visor: %v", err)
+	if !alive(pid) {
+		t.Fatal("the process ended with the visor")
 	}
 
 	v = newPTYVisor(t, home, nil)
