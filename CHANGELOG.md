@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.3.3 (2026-11-01)
 
 - Fix: two state changes of one session at the same time could give their events in the wrong order. The last state event then did not agree with the state of the session.
 
