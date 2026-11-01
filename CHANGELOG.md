@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.1 (2026-11-01)
+
+- `Purge` removes the vendor files only when the spec names `Harness` and `VendorID`. It no longer takes them from the session, because a product can resume the same vendor session in a later session.
+
 ## v0.4.0 (2026-11-01)
 
 - Add `Purge` (`POST /v1/purge`) on `Visor` and `Client`. It removes an ended session, its events, its files, and the files that the vendor keeps for it in the harness home of the visor (agent-wire `SessionFiles`). With `Harness` and `VendorID` and no `Session`, it removes only the vendor files. It refuses a live session, and a vendor session that a live session uses.

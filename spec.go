@@ -84,8 +84,8 @@ type StartSpec struct {
 }
 
 // PurgeSpec names what Purge removes. Session is a visor session. Harness
-// and VendorID name a vendor session, also one that has no visor session;
-// they default to those of Session.
+// and VendorID name the vendor files to remove; without them, the vendor
+// files stay, so that another session can resume the vendor session.
 type PurgeSpec struct {
 	Session  string `json:"session,omitempty"`
 	Harness  string `json:"harness,omitempty"`

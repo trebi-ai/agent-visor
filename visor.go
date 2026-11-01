@@ -419,10 +419,6 @@ func (v *Visor) Purge(ctx context.Context, p PurgeSpec) error {
 	}
 	v.mu.Lock()
 	rec, known := v.sessions[p.Session]
-	if known {
-		p.Harness = cmp.Or(p.Harness, rec.s.Harness)
-		p.VendorID = cmp.Or(p.VendorID, rec.s.VendorID)
-	}
 	for _, r := range v.sessions {
 		if r.s.State.Live() && (r == rec || (p.VendorID != "" && r.s.VendorID == p.VendorID)) {
 			v.mu.Unlock()
@@ -436,7 +432,7 @@ func (v *Visor) Purge(ctx context.Context, p PurgeSpec) error {
 	if p.Session != "" {
 		v.forget(ctx, p.Session)
 	}
-	if p.Harness == "" || p.Harness != filepath.Base(p.Harness) {
+	if p.Harness == "" || p.VendorID == "" {
 		return nil
 	}
 	var errs []error
