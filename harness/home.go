@@ -393,6 +393,27 @@ func (m *Manager) linkHome(name, home string, files []agentwire.HomeFile, st sta
 	return keyFiles, errors.Join(errs...)
 }
 
+// TrustDir marks dir as a trusted folder in the separate home of a harness,
+// so that the vendor CLI shows no folder trust dialog there. The start of a
+// session in dir is the approval. A harness with no trust file changes
+// nothing.
+func (m *Manager) TrustDir(name, dir string) error {
+	h := agentwire.Harness(name)
+	rel := agentwire.HomeTrustFile(h)
+	if rel == "" || dir == "" {
+		return nil
+	}
+	dirs := []string{dir}
+	if real, err := filepath.EvalSymlinks(dir); err == nil && real != dir {
+		dirs = append(dirs, real)
+	}
+	m.homeMu.Lock()
+	defer m.homeMu.Unlock()
+	return m.editFile(filepath.Join(m.separateHome(name), rel), func(b []byte) ([]byte, error) {
+		return agentwire.SetHomeTrust(h, b, dirs)
+	})
+}
+
 // writeProductFiles writes the product files of a home.
 func writeProductFiles(home string, product map[string][]byte) error {
 	var errs []error

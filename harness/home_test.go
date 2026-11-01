@@ -64,6 +64,45 @@ func TestHomeShared(t *testing.T) {
 	}
 }
 
+func TestTrustDir(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	ctx := t.Context()
+	if _, err := r.m.Launch(ctx, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.m.TrustDir("claude", link); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.m.TrustDir("fakeh", link); err != nil {
+		t.Fatal(err)
+	}
+	cj := readJSON(t, filepath.Join(r.home, "harness", "claude", ".claude.json"))
+	projects, _ := cj["projects"].(map[string]any)
+	realDir, _ := filepath.EvalSymlinks(real)
+	for _, d := range []string{link, realDir} {
+		p, _ := projects[d].(map[string]any)
+		if p["hasTrustDialogAccepted"] != true {
+			t.Fatalf("%s not trusted: %v", d, projects)
+		}
+	}
+	if cj["hasCompletedOnboarding"] != true {
+		t.Fatalf("the other keys: %v", cj)
+	}
+	// A new launch keeps the trust marks.
+	if _, err := r.m.Launch(ctx, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	if cj = readJSON(t, filepath.Join(r.home, "harness", "claude", ".claude.json")); cj["projects"] == nil {
+		t.Fatalf("launch dropped the trust: %v", cj)
+	}
+}
+
 func TestHomeFiles(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)

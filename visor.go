@@ -731,6 +731,11 @@ func (v *Visor) launch(ctx context.Context, rec *record, b Backend, spec StartSp
 	s := rec.s
 	v.mu.Unlock()
 	hl, err := v.harnesses.Launch(ctx, spec.Harness)
+	if err == nil && hl.Home != "" {
+		if terr := v.harnesses.TrustDir(spec.Harness, s.WorkingDir); terr != nil {
+			v.log.Warn("trust the working dir", "session_id", s.ID, "err", terr)
+		}
+	}
 	spec.ExtraArgs = append(hl.Args, spec.ExtraArgs...)
 	hl.Binary = cmp.Or(spec.Binary, hl.Binary)
 	l := Launch{

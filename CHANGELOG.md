@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.2 (2026-11-01)
+
+- Fix: a Claude session in the separate harness home showed the folder trust dialog. Before each launch, the visor marks the working dir (and its real path) as trusted in the home `.claude.json` (agent-wire v0.12.0). The start of a session in a folder is the approval.
+
 ## v0.4.1 (2026-11-01)
 
 - `Purge` removes the vendor files only when the spec names `Harness` and `VendorID`. It no longer takes them from the session, because a product can resume the same vendor session in a later session.
