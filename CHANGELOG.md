@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.3.2 (2026-11-01)
 
 - Fix a test of the Orca backend that failed when the poll came late.
 
