@@ -34,7 +34,7 @@ func TestHomeShared(t *testing.T) {
 		t.Fatalf("login link: %q", got)
 	}
 	settings := readJSON(t, filepath.Join(home, "settings.json"))
-	if settings["model"] != "m" || settings["hooks"] != nil || settings["statusLine"] != nil {
+	if settings["model"] != "m" || settings["hooks"] != nil || settings["statusLine"] != "s" {
 		t.Fatalf("settings: %v", settings)
 	}
 	cj := readJSON(t, filepath.Join(home, ".claude.json"))
