@@ -174,8 +174,9 @@ func (m *Manager) latestFor(ctx context.Context, name, known string, checked tim
 
 // noteVersion keeps the version that runs. A change since the last check
 // came from outside the visor; the visor checks it and records it.
+// A check that gives no version number is not a change.
 func (m *Manager) noteVersion(ctx context.Context, name, version, seen string) error {
-	if seen == version {
+	if seen == version || !versionRE.MatchString(version) {
 		return nil
 	}
 	if seen != "" {

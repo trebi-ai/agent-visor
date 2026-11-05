@@ -121,6 +121,15 @@ func TestCheckAutoAndPending(t *testing.T) {
 	if last := h.History[len(h.History)-1]; !last.Outside || last.From != "2.0.0" || last.To != "2.2.0" {
 		t.Fatalf("outside update: %+v", h.History)
 	}
+	// A version check that fails or gives no number is not an update.
+	n := len(h.History)
+	for _, out := range []string{"", "WARNING: could not create PATH aliases\n", "2.2.0\n"} {
+		writeFile(t, filepath.Join(r.home, "sys", "fakeh-version"), out)
+		r.m.Check(ctx)
+	}
+	if h, _ = r.m.Harness(ctx, "fakeh"); len(h.History) != n {
+		t.Fatalf("a failed version check went into the history: %+v", h.History[n:])
+	}
 }
 
 func systemRig(t *testing.T) (*rig, string) {

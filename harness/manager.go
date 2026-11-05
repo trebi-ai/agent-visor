@@ -712,12 +712,16 @@ func modelOf(h agentwire.Harness, mi agentwire.ModelInfo) Model {
 	return Model{ID: mi.ID, Name: mi.Name, Description: mi.Description, Default: mi.Default, Efforts: agentwire.Efforts(h, mi.ID)}
 }
 
-// cleanVersion takes the version number from a --version line.
+// cleanVersion takes the version number from a --version line. It gives ""
+// when the line has no version number.
 func cleanVersion(s string) string {
 	if v := semverRE.FindString(s); v != "" {
 		return v
 	}
-	return strings.TrimSpace(s)
+	if s = strings.TrimSpace(s); versionRE.MatchString(s) {
+		return s
+	}
+	return ""
 }
 
 // writePrivate writes v as JSON with mode 0600, in a folder with mode 0700.
