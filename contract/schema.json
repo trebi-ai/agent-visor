@@ -214,6 +214,9 @@
         "auth_mode": {
           "type": "string"
         },
+        "base": {
+          "type": "string"
+        },
         "detail": {
           "type": "string"
         },

@@ -55,6 +55,9 @@ func (m *Manager) Update(ctx context.Context, name, version string) (Harness, er
 	if !m.known(name) {
 		return Harness{}, fmt.Errorf("harness %s: %w", name, ErrNotFound)
 	}
+	if b := m.base(name); b != name {
+		return Harness{}, fmt.Errorf("%w: %s is a variant; update %s", ErrUnsupported, name, b)
+	}
 	version = strings.TrimPrefix(version, "v")
 	if version != "" && !versionRE.MatchString(version) {
 		return Harness{}, fmt.Errorf("%w: version %q", ErrInvalid, version)
@@ -74,6 +77,9 @@ func (m *Manager) Update(ctx context.Context, name, version string) (Harness, er
 func (m *Manager) SetUpdates(ctx context.Context, name string, mode UpdateMode, version string) (Harness, error) {
 	if !m.known(name) {
 		return Harness{}, fmt.Errorf("harness %s: %w", name, ErrNotFound)
+	}
+	if b := m.base(name); b != name {
+		return Harness{}, fmt.Errorf("%w: %s is a variant; update %s", ErrUnsupported, name, b)
 	}
 	version = strings.TrimPrefix(version, "v")
 	switch {
@@ -124,7 +130,7 @@ func (m *Manager) Check(ctx context.Context) {
 		if m.o.Enabled != nil && !m.o.Enabled(name) {
 			continue
 		}
-		if _, ok := m.o.Facts.Recipe(agentwire.Harness(name)); !ok {
+		if _, ok := m.o.Facts.Recipe(m.kind(name)); !ok {
 			continue
 		}
 		if err := m.checkOne(ctx, name, m.o.Enabled != nil); err != nil {
@@ -189,7 +195,7 @@ func (m *Manager) noteVersion(ctx context.Context, name, version, seen string) e
 }
 
 func (m *Manager) update(ctx context.Context, name, version string) (Harness, error) {
-	h := agentwire.Harness(name)
+	h := m.kind(name)
 	r, hasRecipe := m.o.Facts.Recipe(h)
 	cur, err := m.Harness(ctx, name)
 	if err != nil {
@@ -241,7 +247,7 @@ func (m *Manager) update(ctx context.Context, name, version string) (Harness, er
 // updateSystem runs the vendor update of a system install. It copies the
 // old program first, and runs that copy when the check fails.
 func (m *Manager) updateSystem(ctx context.Context, name string, r agentwire.InstallRecipe, from, version string, authOK bool) (Update, error) {
-	d, err := m.wire.Detect(ctx, agentwire.Harness(name))
+	d, err := m.wire.Detect(ctx, m.kind(name))
 	if err != nil || d.Path == "" {
 		return Update{}, fmt.Errorf("%w: %s is not installed", ErrState, name)
 	}
@@ -291,7 +297,7 @@ func (m *Manager) updateSystem(ctx context.Context, name string, r agentwire.Ins
 
 // keep makes the version that runs now, or version, the one that stays.
 func (m *Manager) keep(ctx context.Context, name, version string) error {
-	h := agentwire.Harness(name)
+	h := m.kind(name)
 	r, ok := m.o.Facts.Recipe(h)
 	cur, err := m.Harness(ctx, name)
 	if err != nil {
@@ -331,7 +337,7 @@ func (m *Manager) verify(ctx context.Context, name, from, to string, authOK bool
 // rollback runs version again: the visor copy, or the copy of the system
 // install.
 func (m *Manager) rollback(name, version string) {
-	r, ok := m.o.Facts.Recipe(agentwire.Harness(name))
+	r, ok := m.o.Facts.Recipe(m.kind(name))
 	if version == "" || !ok || !m.hasVersion(name, r, version) {
 		return
 	}

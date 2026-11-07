@@ -34,7 +34,9 @@ type AuthState string
 
 // Harness is one vendor agent CLI on this machine.
 type Harness struct {
-	Name      string `json:"name"`
+	Name string `json:"name"`
+	// Base is the harness whose program a variant runs.
+	Base      string `json:"base,omitempty"`
 	Installed bool   `json:"installed"`
 	Version   string `json:"version,omitempty"`
 	// Latest is the newest vendor release, when known.
@@ -159,6 +161,10 @@ type Options struct {
 	OnChange func(name string)
 	// Policy is the product policy for the harness homes.
 	Policy Policy
+	// Variants gives the variants by name, each with the name of its base
+	// harness. A variant runs the program of its base with its own home,
+	// login, and env. Install and update work on the base only.
+	Variants func() map[string]string
 	// UserHome is the home folder of the user. Empty uses the home of the
 	// process user.
 	UserHome string
@@ -317,10 +323,11 @@ func New(home string, st *store.Store, wire Wire, o Options) *Manager {
 
 // List gives each known harness.
 func (m *Manager) List(ctx context.Context) ([]Harness, error) {
-	out := make([]Harness, len(m.names))
-	errs := make([]error, len(m.names))
+	names := slices.Concat(m.names, m.variantNames())
+	out := make([]Harness, len(names))
+	errs := make([]error, len(names))
 	var wg sync.WaitGroup
-	for i, name := range m.names {
+	for i, name := range names {
 		wg.Go(func() { out[i], errs[i] = m.Harness(ctx, name) })
 	}
 	wg.Wait()
@@ -332,7 +339,7 @@ func (m *Manager) Harness(ctx context.Context, name string) (Harness, error) {
 	if !m.known(name) {
 		return Harness{}, fmt.Errorf("harness %s: %w", name, ErrNotFound)
 	}
-	h := agentwire.Harness(name)
+	h := m.kind(name)
 	r, hasRecipe := m.o.Facts.Recipe(h)
 	st, err := m.state(ctx, name)
 	if err != nil {
@@ -342,13 +349,21 @@ func (m *Manager) Harness(ctx context.Context, name string) (Harness, error) {
 	if err != nil {
 		return Harness{}, err
 	}
-	out := Harness{
-		Name: name, Installable: hasRecipe && r.Method == agentwire.InstallNPM, Installs: m.installs(name),
-		AuthMode: st.mode(), Limits: st.Limits, EnvKeys: slices.Sorted(maps.Keys(env)), Latest: m.cachedLatest(name),
-		Updates: st.updates(), Pending: st.Pending, History: st.History,
+	base := m.base(name)
+	ust, err := m.updateState(ctx, name, st)
+	if err != nil {
+		return Harness{}, err
 	}
-	if !st.KeptAt.IsZero() && st.updates() == UpdatesKeep {
-		t := st.KeptAt
+	out := Harness{
+		Name: name, Installable: base == name && hasRecipe && r.Method == agentwire.InstallNPM, Installs: m.installs(name),
+		AuthMode: st.mode(), Limits: st.Limits, EnvKeys: slices.Sorted(maps.Keys(env)), Latest: m.cachedLatest(base),
+		Updates: ust.updates(), Pending: ust.Pending, History: ust.History,
+	}
+	if base != name {
+		out.Base = base
+	}
+	if !ust.KeptAt.IsZero() && ust.updates() == UpdatesKeep {
+		t := ust.KeptAt
 		out.KeptAt = &t
 	}
 	if v, path, ok := m.current(name); ok {
@@ -372,7 +387,7 @@ func (m *Manager) Harness(ctx context.Context, name string) (Harness, error) {
 	if l, ok := m.loginLocked(name); ok {
 		out.Login = &l
 	}
-	out.Updating = m.ops[name] == "update"
+	out.Updating = m.ops[base] == "update"
 	m.mu.Unlock()
 	return out, nil
 }
@@ -436,8 +451,8 @@ func (m *Manager) Launch(ctx context.Context, name string) (Launch, error) {
 	if !m.known(name) {
 		return l, nil
 	}
-	m.waitUpdate(ctx, name)
-	h := agentwire.Harness(name)
+	m.waitUpdate(ctx, m.base(name))
+	h := m.kind(name)
 	st, err := m.state(ctx, name)
 	if err != nil {
 		return l, err
@@ -475,7 +490,7 @@ func (m *Manager) Models(ctx context.Context, name string) ([]Model, error) {
 	if !m.known(name) {
 		return nil, fmt.Errorf("harness %s: %w", name, ErrNotFound)
 	}
-	h := agentwire.Harness(name)
+	h := m.kind(name)
 	list, err := m.wire.Models(ctx, h, agentwire.ModelQuery{Binary: l.Binary, Home: l.Home, Env: l.Env})
 	if err != nil || len(list) == 0 {
 		list = agentwire.StaticModels(h)
@@ -508,6 +523,10 @@ func (m *Manager) SetLimits(ctx context.Context, name string, l Limits) {
 	}
 }
 
+// Base gives the name of the harness whose program and driver a name
+// runs: the base of a variant, else the name.
+func (m *Manager) Base(name string) string { return m.base(name) }
+
 // Busy reports that a login, an install, or an update runs.
 func (m *Manager) Busy() bool {
 	m.mu.Lock()
@@ -534,7 +553,37 @@ func (m *Manager) Close(ctx context.Context) error {
 	}
 }
 
-func (m *Manager) known(name string) bool { return slices.Contains(m.names, name) }
+func (m *Manager) known(name string) bool { return slices.Contains(m.names, m.base(name)) }
+
+// base gives the name of the harness whose program a name runs: the base of
+// a variant, else the name.
+func (m *Manager) base(name string) string {
+	if slices.Contains(m.names, name) || m.o.Variants == nil {
+		return name
+	}
+	if b, ok := m.o.Variants()[name]; ok && slices.Contains(m.names, b) {
+		return b
+	}
+	return name
+}
+
+// kind gives the vendor harness of a name.
+func (m *Manager) kind(name string) agentwire.Harness { return agentwire.Harness(m.base(name)) }
+
+// variantNames lists the variants with a known base, sorted.
+func (m *Manager) variantNames() []string {
+	if m.o.Variants == nil {
+		return nil
+	}
+	var out []string
+	for name, b := range m.o.Variants() {
+		if !slices.Contains(m.names, name) && slices.Contains(m.names, b) {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
 
 func (m *Manager) separateHome(name string) string { return filepath.Join(m.home, "harness", name) }
 
@@ -556,6 +605,15 @@ func (m *Manager) env(name string) (map[string]string, error) {
 		return nil, fmt.Errorf("read the env of %s: the file does not parse", name)
 	}
 	return env, nil
+}
+
+// updateState gives the state that holds the updates of a harness: the
+// state of the base for a variant, else st.
+func (m *Manager) updateState(ctx context.Context, name string, st state) (state, error) {
+	if b := m.base(name); b != name {
+		return m.state(ctx, b)
+	}
+	return st, nil
 }
 
 func (m *Manager) state(ctx context.Context, name string) (state, error) {
@@ -597,7 +655,7 @@ func (m *Manager) changeState(ctx context.Context, name string, f func(*state)) 
 // authState gives the login state, from a short cache. A token key in the
 // harness env counts as a login.
 func (m *Manager) authState(ctx context.Context, name string, mode AuthMode, env map[string]string) AuthState {
-	h := agentwire.Harness(name)
+	h := m.kind(name)
 	for _, k := range agentwire.TokenEnvKeys(h) {
 		if env[k] != "" {
 			return AuthOK
@@ -656,7 +714,7 @@ func (m *Manager) cachedLatest(name string) string {
 
 // lookupLatest asks the vendor registry and keeps the answer.
 func (m *Manager) lookupLatest(ctx context.Context, name string) (string, error) {
-	v, err := m.wire.LatestVersion(ctx, agentwire.Harness(name))
+	v, err := m.wire.LatestVersion(ctx, m.kind(name))
 	v = cleanVersion(v)
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -674,7 +732,7 @@ func (m *Manager) changed(name string) {
 	m.mu.Lock()
 	delete(m.auth, name)
 	m.mu.Unlock()
-	m.wire.InvalidateModels(agentwire.Harness(name))
+	m.wire.InvalidateModels(m.kind(name))
 	if m.o.OnChange != nil {
 		m.o.OnChange(name)
 	}

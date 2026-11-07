@@ -105,7 +105,7 @@ func (m *Manager) Login(ctx context.Context, name string, spec LoginSpec) (Login
 	if !m.known(name) {
 		return Login{}, fmt.Errorf("harness %s: %w", name, ErrNotFound)
 	}
-	h := agentwire.Harness(name)
+	h := m.kind(name)
 	st, err := m.state(ctx, name)
 	if err != nil {
 		return Login{}, err
@@ -212,7 +212,7 @@ func (m *Manager) Logout(ctx context.Context, name string) error {
 		return fmt.Errorf("harness %s: %w", name, ErrNotFound)
 	}
 	m.stopLogin(ctx, name)
-	h := agentwire.Harness(name)
+	h := m.kind(name)
 	st, err := m.state(ctx, name)
 	if err != nil {
 		return err
@@ -255,7 +255,7 @@ func (m *Manager) Logout(ctx context.Context, name string) error {
 
 // startLogin starts the login process and its watcher.
 func (m *Manager) startLogin(ctx context.Context, name string, argv []string, st state) (*login, error) {
-	h := agentwire.Harness(name)
+	h := m.kind(name)
 	bin, err := m.binary(ctx, name)
 	if err != nil {
 		return nil, err
@@ -474,7 +474,7 @@ func (m *Manager) stopLogin(ctx context.Context, name string) {
 
 // storeToken writes a token login into the harness env.
 func (m *Manager) storeToken(ctx context.Context, name, token string) error {
-	key := agentwire.LoginTokenEnv(agentwire.Harness(name))
+	key := agentwire.LoginTokenEnv(m.kind(name))
 	if key == "" {
 		return fmt.Errorf("%w: %s takes no token", ErrUnsupported, name)
 	}
@@ -491,7 +491,7 @@ func (m *Manager) storeToken(ctx context.Context, name, token string) error {
 
 // dropToken removes a token login from the harness env.
 func (m *Manager) dropToken(name string) (bool, error) {
-	key := agentwire.LoginTokenEnv(agentwire.Harness(name))
+	key := agentwire.LoginTokenEnv(m.kind(name))
 	env, err := m.env(name)
 	if err != nil || key == "" || env[key] == "" {
 		return false, err
@@ -502,7 +502,7 @@ func (m *Manager) dropToken(name string) (bool, error) {
 
 // loginHome is the folder that holds a separate login.
 func (m *Manager) loginHome(name string) string {
-	return filepath.Join(m.separateHome(name), agentwire.LoginDir(agentwire.Harness(name)))
+	return filepath.Join(m.separateHome(name), agentwire.LoginDir(m.kind(name)))
 }
 
 // binary gives the program of the harness: the visor copy, else the system
@@ -521,7 +521,8 @@ func (m *Manager) binary(ctx context.Context, name string) (string, error) {
 // detect probes the system install of the harness. Facts.Binary gives the
 // path when agent-wire finds none.
 func (m *Manager) detect(ctx context.Context, name string) (agentwire.Detection, error) {
-	h := agentwire.Harness(name)
+	name = m.base(name)
+	h := m.kind(name)
 	d, err := m.wire.Detect(ctx, h)
 	if err != nil {
 		return d, fmt.Errorf("detect %s: %w", name, err)

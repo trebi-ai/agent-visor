@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.0 (2026-11-07)
+
+- Add harness variants. `harness.Options.Variants` gives each variant name with the name of its base harness. A variant runs the program and the driver of its base, with its own home (`<home>/harness/<variant>`), auth mode, login, and env. `Install`, `Update`, and `SetUpdates` refuse a variant with `ErrUnsupported`; a variant uses the install and the updates of its base.
+- `Harness.Base` names the base of a variant. `List` gives the variants after the base harnesses.
+- `Launch.Kind` names the harness whose program and driver run. A backend uses it in place of `Spec.Harness`. `Manager.Base` gives it for a name.
+
 ## v0.4.2 (2026-11-01)
 
 - Fix: a Claude session in the separate harness home showed the folder trust dialog. Before each launch, the visor marks the working dir (and its real path) as trusted in the home `.claude.json` (agent-wire v0.12.0). The start of a session in a folder is the approval.

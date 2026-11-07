@@ -104,7 +104,7 @@ func (b *wireBackend) Start(ctx context.Context, l Launch) (Handle, error) {
 		h   Handle
 		err error
 	)
-	if b.held(l.Spec.Harness) {
+	if b.held(cmp.Or(l.Kind, l.Spec.Harness)) {
 		h, err = b.startHeld(ctx, l)
 	} else {
 		h, err = b.startInProc(ctx, l)
@@ -179,7 +179,7 @@ func (b *wireBackend) held(harness string) bool {
 
 func (b *wireBackend) request(l Launch) agentwire.StartRequest {
 	return agentwire.StartRequest{
-		Harness: agentwire.Harness(l.Spec.Harness), Binary: l.Binary, WorkingDir: l.Dir, Env: l.Env, Home: l.Home,
+		Harness: agentwire.Harness(cmp.Or(l.Kind, l.Spec.Harness)), Binary: l.Binary, WorkingDir: l.Dir, Env: l.Env, Home: l.Home,
 		Model: l.Spec.Model, Effort: l.Spec.Effort, Permissions: l.Spec.Permissions.wire(), MCPServers: wireMCPServers(l.Spec.MCPServers),
 		Skills: wireSkills(l.Spec.Skills), Instructions: l.Spec.Instructions, ExtraArgs: l.Spec.ExtraArgs, Raw: l.Spec.Raw,
 		LogPath:         filepath.Join(b.home, "sessions", l.Session.ID, "frames.ndjson"),

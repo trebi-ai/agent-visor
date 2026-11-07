@@ -436,7 +436,7 @@ func (v *Visor) Purge(ctx context.Context, p PurgeSpec) error {
 		return nil
 	}
 	var errs []error
-	for _, path := range agentwire.SessionFiles(agentwire.Harness(p.Harness), filepath.Join(v.opts.Home, "harness", p.Harness), p.VendorID) {
+	for _, path := range agentwire.SessionFiles(agentwire.Harness(v.harnesses.Base(p.Harness)), filepath.Join(v.opts.Home, "harness", p.Harness), p.VendorID) {
 		if err := os.RemoveAll(path); err != nil {
 			errs = append(errs, err)
 		}
@@ -739,7 +739,7 @@ func (v *Visor) launch(ctx context.Context, rec *record, b Backend, spec StartSp
 	spec.ExtraArgs = append(hl.Args, spec.ExtraArgs...)
 	hl.Binary = cmp.Or(spec.Binary, hl.Binary)
 	l := Launch{
-		Session: s, Spec: spec, Dir: s.WorkingDir, Resume: resume, Prompt: prompt, Binary: hl.Binary, Home: hl.Home,
+		Session: s, Spec: spec, Kind: v.harnesses.Base(spec.Harness), Dir: s.WorkingDir, Resume: resume, Prompt: prompt, Binary: hl.Binary, Home: hl.Home,
 		Env: mergeEnv(v.opts.Env, hl.Env, spec.Env, visorEnv(s, w, v.opts.Socket)),
 	}
 	var h Handle
@@ -759,7 +759,7 @@ func (v *Visor) launch(ctx context.Context, rec *record, b Backend, spec StartSp
 	// The pump can move the state first, when a fast turn ends.
 	// A backend with no typed events runs while its process lives.
 	to := StateIdle
-	if prompt != nil || !b.Caps(spec.Harness).Structured {
+	if prompt != nil || !b.Caps(l.Kind).Structured {
 		to = StateRunning
 	}
 	v.moveIf(ctx, rec, StateStarting, to)
@@ -1216,7 +1216,7 @@ func (v *Visor) cursor(ctx context.Context, session string) (holder.Cursor, erro
 
 func (v *Visor) caps(s Session) Caps {
 	if b, ok := v.backends[s.Kind]; ok {
-		return b.Caps(s.Harness)
+		return b.Caps(v.harnesses.Base(s.Harness))
 	}
 	return Caps{}
 }

@@ -197,8 +197,9 @@ func (b *ptyBackend) command(l Launch, env []string) ([]string, error) {
 	if len(l.Spec.Command) > 0 {
 		return l.Spec.Command, nil
 	}
-	argv := []string{cmp.Or(l.Binary, l.Spec.Harness)}
-	argv = append(argv, agentwire.ModelArgs(agentwire.Harness(l.Spec.Harness), l.Spec.Model, l.Spec.Effort)...)
+	kind := cmp.Or(l.Kind, l.Spec.Harness)
+	argv := []string{cmp.Or(l.Binary, kind)}
+	argv = append(argv, agentwire.ModelArgs(agentwire.Harness(kind), l.Spec.Model, l.Spec.Effort)...)
 	return append(argv, l.Spec.ExtraArgs...), nil
 }
 

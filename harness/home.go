@@ -116,7 +116,7 @@ func (m *Manager) Files(ctx context.Context, name string) ([]HomeFile, error) {
 		return nil, err
 	}
 	out := []HomeFile{}
-	for _, f := range agentwire.HomeFiles(agentwire.Harness(name)) {
+	for _, f := range agentwire.HomeFiles(m.kind(name)) {
 		out = append(out, m.fileRow(name, f, st))
 	}
 	return out, nil
@@ -329,7 +329,7 @@ func (m *Manager) afterFileChange(ctx context.Context, name string, f agentwire.
 // prepareHome builds the home of a harness for its auth mode and gives the
 // home and its env. An empty home means the user's own home.
 func (m *Manager) prepareHome(name string, st state) (string, map[string]string, error) {
-	h := agentwire.Harness(name)
+	h := m.kind(name)
 	f := m.o.Facts
 	mode := st.mode()
 	files := agentwire.HomeFiles(h)
@@ -398,7 +398,7 @@ func (m *Manager) linkHome(name, home string, files []agentwire.HomeFile, st sta
 // session in dir is the approval. A harness with no trust file changes
 // nothing.
 func (m *Manager) TrustDir(name, dir string) error {
-	h := agentwire.Harness(name)
+	h := m.kind(name)
 	rel := agentwire.HomeTrustFile(h)
 	if rel == "" || dir == "" {
 		return nil
@@ -431,7 +431,7 @@ func writeProductFiles(home string, product map[string][]byte) error {
 // buildKeyFile writes the shared keys, the defaults, the policy keys, and
 // the MCP servers into one home file.
 func (m *Manager) buildKeyFile(name, home, rel string, entries []agentwire.HomeFile, st state) error {
-	h := agentwire.Harness(name)
+	h := m.kind(name)
 	path := filepath.Join(home, rel)
 	return m.editFile(path, func(b []byte) ([]byte, error) {
 		var named []string
@@ -518,6 +518,9 @@ func (m *Manager) shares(name string, f agentwire.HomeFile, st state) bool {
 	if v, ok := m.o.Policy.Share[name][f.Key]; ok {
 		return v
 	}
+	if v, ok := m.o.Policy.Share[m.base(name)][f.Key]; ok {
+		return v
+	}
 	return f.Share
 }
 
@@ -542,7 +545,7 @@ func (m *Manager) fileKeys(name string, f agentwire.HomeFile) []string {
 	}
 	data, _ := readOptional(filepath.Join(m.userHome(), f.User)) // a missing user file has no keys
 	var named []string
-	for _, e := range agentwire.HomeFiles(agentwire.Harness(name)) {
+	for _, e := range agentwire.HomeFiles(m.kind(name)) {
 		if e.Home == f.Home {
 			named = append(named, e.Keys...)
 		}
@@ -594,7 +597,7 @@ func (m *Manager) homeFile(name, key string) (agentwire.HomeFile, error) {
 	if !m.known(name) {
 		return agentwire.HomeFile{}, fmt.Errorf("harness %s: %w", name, ErrNotFound)
 	}
-	for _, f := range agentwire.HomeFiles(agentwire.Harness(name)) {
+	for _, f := range agentwire.HomeFiles(m.kind(name)) {
 		if f.Key == key {
 			return f, nil
 		}

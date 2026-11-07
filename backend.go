@@ -23,6 +23,9 @@ type Caps struct {
 type Launch struct {
 	Session Session
 	Spec    StartSpec
+	// Kind is the harness whose program and driver run: the base of a
+	// variant, else Spec.Harness.
+	Kind string
 	// Dir is the working folder.
 	Dir string
 	// Env is the merged env: visor, harness, session, and the visor values.

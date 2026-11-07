@@ -320,6 +320,56 @@ func TestAuthModeAndLogin(t *testing.T) {
 	}
 }
 
+func TestVariant(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	ctx := t.Context()
+	if _, err := r.m.Install(ctx, "fakeh", "1.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.m.Install(ctx, "fakeh-alt", ""); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("install a variant: %v", err)
+	}
+	if _, err := r.m.Update(ctx, "fakeh-alt", ""); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("update a variant: %v", err)
+	}
+	if _, err := r.m.Harness(ctx, "orphan"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a variant of an unknown base: %v", err)
+	}
+	list, err := r.m.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, h := range list {
+		names = append(names, h.Name)
+	}
+	if !slices.Equal(names, []string{"fakeh", "claude", "fakeh-alt"}) {
+		t.Fatalf("list: %v", names)
+	}
+	h, err := r.m.Harness(ctx, "fakeh-alt")
+	if err != nil || h.Base != "fakeh" || h.Version != "1.0.0" || h.Installable || h.AuthMode != AuthShared {
+		t.Fatalf("variant: %+v %v", h, err)
+	}
+	if err := r.m.SetEnv(ctx, "fakeh-alt", map[string]string{"K": "v"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.m.SetAuthMode(ctx, "fakeh-alt", AuthSeparate); err != nil {
+		t.Fatal(err)
+	}
+	if h, _ := r.m.Harness(ctx, "fakeh"); h.AuthMode != AuthShared || len(h.EnvKeys) != 0 { // checked here
+		t.Fatalf("the base changed: %+v", h)
+	}
+	l, err := r.m.Launch(ctx, "fakeh-alt")
+	sep := filepath.Join(r.home, "harness", "fakeh-alt")
+	if err != nil || l.Home != sep || l.Env["K"] != "v" || l.Env["FAKEH_NO_UPDATE"] != "1" || !strings.Contains(l.Binary, filepath.Join("bin", "fakeh")) {
+		t.Fatalf("variant launch: %+v %v", l, err)
+	}
+	if r.m.Base("fakeh-alt") != "fakeh" || r.m.Base("claude") != "claude" || r.m.Base("orphan") != "orphan" {
+		t.Fatal("base")
+	}
+}
+
 func TestLoginInAppAndMissing(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)
@@ -484,8 +534,9 @@ func newRig(t *testing.T) *rig {
 	r := &rig{home: home, user: filepath.Join(home, "user"), wire: &fakeWire{latest: "2.0.0"}, changes: make(chan string, 256), logs: &bytes.Buffer{}}
 	var logMu sync.Mutex
 	r.m = New(home, st, r.wire, Options{
-		Names: []string{"fakeh", "claude"},
-		Path:  tools + string(os.PathListSeparator) + "/bin" + string(os.PathListSeparator) + "/usr/bin",
+		Names:    []string{"fakeh", "claude"},
+		Variants: func() map[string]string { return map[string]string{"fakeh-alt": "fakeh", "orphan": "nope"} },
+		Path:     tools + string(os.PathListSeparator) + "/bin" + string(os.PathListSeparator) + "/usr/bin",
 		Facts: Facts{
 			Recipe: func(h agentwire.Harness) (agentwire.InstallRecipe, bool) {
 				return agentwire.InstallRecipe{Harness: h, Method: agentwire.InstallNPM, Package: "fake-pkg", Bin: "fakeh",

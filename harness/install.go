@@ -30,11 +30,14 @@ func (m *Manager) Install(ctx context.Context, name, version string) (Harness, e
 	if !m.known(name) {
 		return Harness{}, fmt.Errorf("harness %s: %w", name, ErrNotFound)
 	}
+	if b := m.base(name); b != name {
+		return Harness{}, fmt.Errorf("%w: %s is a variant; install %s", ErrUnsupported, name, b)
+	}
 	version = strings.TrimPrefix(version, "v")
 	if version != "" && !versionRE.MatchString(version) {
 		return Harness{}, fmt.Errorf("%w: version %q", ErrInvalid, version)
 	}
-	r, ok := m.o.Facts.Recipe(agentwire.Harness(name))
+	r, ok := m.o.Facts.Recipe(m.kind(name))
 	if ok && r.Method != agentwire.InstallNPM && len(r.Command(version)) > 0 {
 		return m.installSystem(ctx, name, r)
 	}
@@ -168,11 +171,12 @@ func (m *Manager) switchTo(name, version string) error {
 
 // current gives the version and the binary of the visor copy.
 func (m *Manager) current(name string) (string, string, bool) {
+	name = m.base(name)
 	v, err := os.Readlink(filepath.Join(m.binDir(name), currentLink))
 	if err != nil {
 		return "", "", false
 	}
-	r, ok := m.o.Facts.Recipe(agentwire.Harness(name))
+	r, ok := m.o.Facts.Recipe(m.kind(name))
 	if !ok {
 		return "", "", false
 	}
@@ -184,6 +188,7 @@ func (m *Manager) current(name string) (string, string, bool) {
 
 // installs lists the visor installs, oldest first.
 func (m *Manager) installs(name string) []string {
+	name = m.base(name)
 	entries, err := os.ReadDir(m.binDir(name))
 	if err != nil {
 		return nil
