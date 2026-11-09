@@ -248,24 +248,6 @@ func TestSuspendAndResumeAcrossRestart(t *testing.T) {
 	})
 }
 
-// userEvents returns the user events of a session up to its head.
-func userEvents(t *testing.T, v api, id string) []Event {
-	t.Helper()
-	head := waitState(t, v, id, StateIdle).Seq
-	st, err := v.Events(t.Context(), Filter{}, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
-	var out []Event
-	for _, e := range collect(t, st, func(e Event) bool { return e.Seq >= head }) {
-		if e.Session == id && e.Type == EventUser {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
 func TestInputKindGoesIntoTheUserEvent(t *testing.T) {
 	t.Parallel()
 	eachHost(t, func(t *testing.T, open opener) {
@@ -477,6 +459,24 @@ func TestStateMoves(t *testing.T) {
 			}
 		}
 	}
+}
+
+// userEvents returns the user events of a session up to its head.
+func userEvents(t *testing.T, v api, id string) []Event {
+	t.Helper()
+	head := waitState(t, v, id, StateIdle).Seq
+	st, err := v.Events(t.Context(), Filter{}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	var out []Event
+	for _, e := range collect(t, st, func(e Event) bool { return e.Seq >= head }) {
+		if e.Session == id && e.Type == EventUser {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func newTestVisor(t *testing.T, home, script string, log *slog.Logger) *Visor {

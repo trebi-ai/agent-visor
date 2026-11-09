@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.2 (2026-11-09)
+
+- Fix the lint error in the tests of v0.5.1. The code does not change.
+
 ## v0.5.1 (2026-11-09)
 
 - `Event.Kind` keeps the kind of the input of a user event. `StartSpec.PromptKind` gives the kind of the first prompt. The restart prompt has the kind `restart` (`InputKindRestart`).
