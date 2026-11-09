@@ -67,7 +67,9 @@ type StartSpec struct {
 	Env          map[string]string `json:"env,omitempty"`
 	Instructions string            `json:"instructions,omitempty"`
 	// Prompt is the first turn. Empty starts the session idle.
-	Prompt      string      `json:"prompt,omitempty"`
+	Prompt string `json:"prompt,omitempty"`
+	// PromptKind is the kind of the first input. It is ignored with no Prompt.
+	PromptKind  string      `json:"prompt_kind,omitempty"`
 	Permissions Permissions `json:"permissions"`
 	MCPServers  []MCPServer `json:"mcp_servers,omitempty"`
 	Skills      []Skill     `json:"skills,omitempty"`
@@ -137,6 +139,10 @@ type Attachment struct {
 	Path string `json:"path,omitempty"`
 	Data []byte `json:"data,omitempty"`
 }
+
+// InputKindRestart is the kind of the restart prompt that the visor sends to
+// a lost session.
+const InputKindRestart = "restart"
 
 // Input is one user turn.
 type Input struct {

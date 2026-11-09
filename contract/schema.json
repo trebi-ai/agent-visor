@@ -77,6 +77,9 @@
         "input": {
           "type": "boolean"
         },
+        "kind": {
+          "type": "string"
+        },
         "limits": {
           "$ref": "#/$defs/Limits"
         },
@@ -1035,6 +1038,9 @@
           "$ref": "#/$defs/Permissions"
         },
         "prompt": {
+          "type": "string"
+        },
+        "prompt_kind": {
           "type": "string"
         },
         "raw": {

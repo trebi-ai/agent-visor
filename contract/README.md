@@ -10,7 +10,7 @@ The Go types are the source. `TestContract` checks that the Go types encode to t
 
 A client in another language vendors these files byte-identical. A break bumps the protocol version that `GET /v1/info` returns.
 
-`POST /v1/sessions/{id}/send` answers 200 with `{"delivery": "prompted" | "steered" | "held"}` (`fixtures/send_reply.json`). A user event that the visor writes for a send or a first prompt has `"input": true`; a vendor echo has no mark.
+`POST /v1/sessions/{id}/send` answers 200 with `{"delivery": "prompted" | "steered" | "held"}` (`fixtures/send_reply.json`). A user event that the visor writes for a send or a first prompt has `"input": true`; a vendor echo has no mark. An input event has the `kind` of its input. The restart prompt has the kind `restart`.
 
 `POST /v1/upgrade` takes an upgrade spec (`fixtures/upgrade_spec.json`) and answers with `info`. `info.upgrade` gives the build of a pending upgrade. A hello with a `binary` of a newer build schedules the same upgrade. The visor waits until no session in a turn needs its process, no attach client is open, and no harness login, install, or update runs, for 24 hours at most, or 10 minutes when the protocol major changes. Then it writes the event `visor.restarting`, closes the socket, and runs the binary. A client connects again and reads the events after its last seq.
 

@@ -344,7 +344,7 @@ func (v *Visor) Send(ctx context.Context, id string, in Input) (Delivery, error)
 				return "", ctx.Err()
 			}
 		}
-		v.emit(ctx, rec, Event{Type: EventUser, Text: in.Text, Input: true})
+		v.emit(ctx, rec, Event{Type: EventUser, Text: in.Text, Kind: in.Kind, Input: true})
 		d, err := h.Send(ctx, in)
 		if errors.Is(err, errHolderEnding) {
 			return DeliveryPrompted, v.resumeAfterEnd(ctx, rec, in)
@@ -595,8 +595,8 @@ func (v *Visor) start(ctx context.Context, spec StartSpec) (Session, error) {
 	}
 	var prompt *Input
 	if spec.Prompt != "" {
-		prompt = &Input{Text: spec.Prompt}
-		v.emit(ctx, rec, Event{Type: EventUser, Text: prompt.Text, Input: true})
+		prompt = &Input{Text: spec.Prompt, Kind: spec.PromptKind}
+		v.emit(ctx, rec, Event{Type: EventUser, Text: prompt.Text, Kind: prompt.Kind, Input: true})
 	}
 	if err := v.launch(ctx, rec, b, spec, w, spec.ResumeID != "", prompt); err != nil {
 		return Session{}, err
@@ -671,7 +671,7 @@ func (v *Visor) restart(rec *record) {
 	v.wg.Add(1)
 	go func() {
 		defer v.wg.Done()
-		in := &Input{Text: rec.s.Restart.Prompt}
+		in := &Input{Text: rec.s.Restart.Prompt, Kind: InputKindRestart}
 		if in.Text == "" {
 			in = nil
 		}
@@ -706,7 +706,7 @@ func (v *Visor) resume(ctx context.Context, rec *record, in *Input, echo bool) e
 		return err
 	}
 	if in != nil && echo {
-		v.emit(ctx, rec, Event{Type: EventUser, Text: in.Text, Input: true})
+		v.emit(ctx, rec, Event{Type: EventUser, Text: in.Text, Kind: in.Kind, Input: true})
 	}
 	return v.launch(ctx, rec, b, spec, w, true, in)
 }

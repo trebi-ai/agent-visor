@@ -248,6 +248,73 @@ func TestSuspendAndResumeAcrossRestart(t *testing.T) {
 	})
 }
 
+// userEvents returns the user events of a session up to its head.
+func userEvents(t *testing.T, v api, id string) []Event {
+	t.Helper()
+	head := waitState(t, v, id, StateIdle).Seq
+	st, err := v.Events(t.Context(), Filter{}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	var out []Event
+	for _, e := range collect(t, st, func(e Event) bool { return e.Seq >= head }) {
+		if e.Session == id && e.Type == EventUser {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func TestInputKindGoesIntoTheUserEvent(t *testing.T) {
+	t.Parallel()
+	eachHost(t, func(t *testing.T, open opener) {
+		v := open(t, t.TempDir(), scriptTurns, nil)
+		defer v.Close(context.Background())
+		s, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), Prompt: "a", PromptKind: "overseer"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitState(t, v, s.ID, StateIdle)
+		if _, err := v.Send(t.Context(), s.ID, Input{Text: "b", Kind: "user"}); err != nil {
+			t.Fatal(err)
+		}
+		for waitState(t, v, s.ID, StateIdle).Turns != 2 {
+			time.Sleep(10 * time.Millisecond)
+		}
+		want := map[string]string{"a": "overseer", "b": "user"}
+		got := map[string]string{}
+		for _, e := range userEvents(t, v, s.ID) {
+			if !e.Input {
+				if e.Kind != "" {
+					t.Errorf("a vendor echo has kind %q", e.Kind)
+				}
+				continue
+			}
+			got[e.Text] = e.Kind
+		}
+		if len(got) != len(want) || got["a"] != want["a"] || got["b"] != want["b"] {
+			t.Fatalf("input kinds %v, want %v", got, want)
+		}
+	})
+}
+
+func TestStartWithNoPromptIgnoresPromptKind(t *testing.T) {
+	t.Parallel()
+	eachHost(t, func(t *testing.T, open opener) {
+		v := open(t, t.TempDir(), scriptTurns, nil)
+		defer v.Close(context.Background())
+		s, err := v.Start(t.Context(), StartSpec{Harness: "fake", WorkingDir: t.TempDir(), PromptKind: "overseer"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitState(t, v, s.ID, StateIdle)
+		if got := userEvents(t, v, s.ID); len(got) != 0 {
+			t.Fatalf("user events with no prompt: %+v", got)
+		}
+	})
+}
+
 func TestLostSessionRestartPolicy(t *testing.T) {
 	t.Parallel()
 	eachHost(t, func(t *testing.T, open opener) {
@@ -270,6 +337,15 @@ func TestLostSessionRestartPolicy(t *testing.T) {
 		defer v.Close(context.Background())
 		waitState(t, v, notify.ID, StateLost)
 		waitState(t, v, keep.ID, StateIdle)
+		restarted := false
+		for _, e := range userEvents(t, v, keep.ID) {
+			if e.Input && e.Text == "continue" {
+				restarted = e.Kind == InputKindRestart
+			}
+		}
+		if !restarted {
+			t.Error("the restart prompt has no kind restart")
+		}
 	})
 }
 

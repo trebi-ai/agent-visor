@@ -8,6 +8,7 @@
     "API_TOKEN": "secret"
   },
   "prompt": "Fix the test.",
+  "prompt_kind": "overseer",
   "permissions": {
     "mode": "ask",
     "allow_tools": [

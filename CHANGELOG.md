@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.1 (unreleased)
+
+- `Event.Kind` keeps the kind of the input of a user event. `StartSpec.PromptKind` gives the kind of the first prompt. The restart prompt has the kind `restart` (`InputKindRestart`).
+
 ## v0.5.0 (2026-11-07)
 
 - Add harness variants. `harness.Options.Variants` gives each variant name with the name of its base harness. A variant runs the program and the driver of its base, with its own home (`<home>/harness/<variant>`), auth mode, login, and env. `Install`, `Update`, and `SetUpdates` refuse a variant with `ErrUnsupported`; a variant uses the install and the updates of its base.

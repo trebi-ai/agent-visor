@@ -62,7 +62,7 @@ func contractFixtures() []fixture {
 		{"purge_spec", PurgeSpec{Session: "ses_1", Harness: "claude", VendorID: "56fc5395-9134-4a60-9bfb-6d2048569e1c"}},
 		{"error", errorBody{Error: errorInfo{Code: "not_found", Message: "session ses_1: agentvisor: not found"}}},
 		{"start_spec", StartSpec{
-			Harness: "claude", Model: "sonnet", Effort: "high", Binary: "/usr/local/bin/claude", WorkingDir: "/src/app", Prompt: "Fix the test.",
+			Harness: "claude", Model: "sonnet", Effort: "high", Binary: "/usr/local/bin/claude", WorkingDir: "/src/app", Prompt: "Fix the test.", PromptKind: "overseer",
 			Env: map[string]string{"API_TOKEN": "secret"}, Labels: map[string]string{"app.run": "r_1"},
 			Permissions: Permissions{Mode: agentwire.PermissionAsk, AllowTools: []string{"Read"}}, Skills: []Skill{{Dir: "/src/skills/review"}}, Restart: RestartPolicy{Mode: RestartResume, Prompt: "Continue."},
 		}},
@@ -82,7 +82,7 @@ func contractFixtures() []fixture {
 		}},
 		{"project", Project{ID: "prj_1", Name: "app", Path: "/src/app", Git: true, CreatedAt: at}},
 		{"events", []Event{
-			{Seq: 39, Session: "ses_1", At: at, Type: EventUser, Text: "Also run the linter.", Input: true},
+			{Seq: 39, Session: "ses_1", At: at, Type: EventUser, Text: "Also run the linter.", Kind: "overseer", Input: true},
 			{Seq: 40, Session: "ses_1", At: at, Type: EventSessionState, State: StateRunning},
 			{Seq: 41, Session: "ses_1", At: at, Type: EventTool, Tool: &Tool{ID: "t1", Name: "Bash", Input: `{"command":"ls"}`, Status: "done", ExitCode: &code}},
 			{Seq: 42, Session: "ses_1", At: at, Type: EventRequest, Request: &req},
