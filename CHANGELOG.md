@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.5.1 (unreleased)
+## v0.5.1 (2026-11-09)
 
 - `Event.Kind` keeps the kind of the input of a user event. `StartSpec.PromptKind` gives the kind of the first prompt. The restart prompt has the kind `restart` (`InputKindRestart`).
 
