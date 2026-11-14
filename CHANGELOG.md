@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.6.1 (2026-11-14)
+
+- Accept a sha512 digest for a download (`sha512:<hex>`), next to sha256. agent-wire v0.14.0 installs Codex and OpenCode from the npm registry, which gives sha512. The GitHub API allowed only 60 calls per hour for each address with no token.
+
 ## v0.6.0 (2026-11-14)
 
 - Install Claude Code, Codex, and OpenCode from the vendor download, with no npm and no Node (agent-wire v0.13.0). `Install` and `Update` fetch the release file, check its size and sha256, unpack it with a safe unpacker, and run the `--version` check before the switch. A failed install leaves no files behind.

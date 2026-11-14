@@ -6,9 +6,11 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
 	"os"
@@ -29,7 +31,7 @@ const (
 // download is one file to fetch, check, and put in a folder.
 type download struct {
 	url string
-	// digest is "sha256:<hex>".
+	// digest is "sha256:<hex>" or "sha512:<hex>".
 	digest string
 	// size is the byte size, or zero when unknown.
 	size int64
@@ -90,9 +92,16 @@ func (m *Manager) fetchTo(ctx context.Context, d download, dir, rawPath string) 
 
 // stream copies the body of d.url to w, and checks the size and the digest.
 func (m *Manager) stream(ctx context.Context, d download, w io.Writer) error {
-	want, ok := strings.CutPrefix(d.digest, "sha256:")
-	if !ok || len(want) != sha256.Size*2 {
-		return fmt.Errorf("%w: no sha256 digest to check %s", ErrDownload, d.url)
+	algo, want, _ := strings.Cut(d.digest, ":")
+	var h hash.Hash
+	switch algo {
+	case "sha256":
+		h = sha256.New()
+	case "sha512":
+		h = sha512.New()
+	}
+	if h == nil || len(want) != h.Size()*2 {
+		return fmt.Errorf("%w: no digest to check %s", ErrDownload, d.url)
 	}
 	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
 	defer cancel()
@@ -112,7 +121,6 @@ func (m *Manager) stream(ctx context.Context, d download, w io.Writer) error {
 	if d.size > 0 {
 		limit = d.size + 1
 	}
-	h := sha256.New()
 	n, err := io.Copy(io.MultiWriter(w, h), io.LimitReader(resp.Body, limit))
 	if err != nil {
 		return fmt.Errorf("%w: GET %s: %w", ErrDownload, d.url, err)
@@ -121,7 +129,7 @@ func (m *Manager) stream(ctx context.Context, d download, w io.Writer) error {
 		return fmt.Errorf("%w: GET %s: %d bytes, want %d", ErrDownload, d.url, n, d.size)
 	}
 	if !strings.EqualFold(hex.EncodeToString(h.Sum(nil)), want) {
-		return fmt.Errorf("%w: GET %s: the sha256 does not match", ErrDownload, d.url)
+		return fmt.Errorf("%w: GET %s: the %s does not match", ErrDownload, d.url, algo)
 	}
 	return nil
 }

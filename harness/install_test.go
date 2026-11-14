@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -154,6 +155,7 @@ func TestInstallBinaryArchive(t *testing.T) {
 		kind    agentwire.ArchiveKind
 		program string
 		data    func(t *testing.T) []byte
+		sha512  bool
 	}{
 		{"tar.gz", agentwire.ArchiveTarGz, "bin/fakeh", func(t *testing.T) []byte {
 			return tarGz(t,
@@ -161,21 +163,31 @@ func TestInstallBinaryArchive(t *testing.T) {
 				tarEntry{name: "bin/fakeh", body: fakeProgram("1.4.0")},
 				tarEntry{name: "bin/alias", typ: tar.TypeSymlink, link: "fakeh"},
 				tarEntry{name: "share/note.txt", body: "note"})
-		}},
+		}, false},
 		{"zip with the program at the root", agentwire.ArchiveZip, "bin/fakeh", func(t *testing.T) []byte {
 			return zipFile(t, map[string]string{"fakeh": fakeProgram("1.4.0")})
-		}},
+		}, false},
 		{"tar.gz with the program at the root", agentwire.ArchiveTarGz, "bin/fakeh", func(t *testing.T) []byte {
 			return tarGz(t, tarEntry{name: "fakeh", body: fakeProgram("1.4.0")})
-		}},
+		}, false},
+		{"npm package with a sha512 digest", agentwire.ArchiveTarGz, "package/vendor/x/bin/fakeh", func(t *testing.T) []byte {
+			return tarGz(t,
+				tarEntry{name: "package/package.json", body: "{}"},
+				tarEntry{name: "package/vendor/x/bin/fakeh", body: fakeProgram("1.4.0")})
+		}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			r, srv := binaryRig(t, tc.program, tc.kind)
 			data := tc.data(t)
 			srv.put("/a", data)
+			digest := digestOf(data)
+			if tc.sha512 {
+				sum := sha512.Sum512(data)
+				digest = "sha512:" + hex.EncodeToString(sum[:])
+			}
 			r.setAsset(func(string) (agentwire.Asset, error) {
-				return agentwire.Asset{URL: srv.srv.URL + "/a", Digest: digestOf(data), Size: int64(len(data)), Archive: tc.kind, Program: tc.program}, nil
+				return agentwire.Asset{URL: srv.srv.URL + "/a", Digest: digest, Size: int64(len(data)), Archive: tc.kind, Program: tc.program}, nil
 			})
 			h, err := r.m.Install(t.Context(), "fakeh", "1.4.0")
 			if err != nil || !h.Installed || h.Version != "1.4.0" {
