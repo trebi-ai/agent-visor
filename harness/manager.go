@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -116,6 +118,7 @@ type Wire interface {
 	Models(ctx context.Context, h agentwire.Harness, q agentwire.ModelQuery) ([]agentwire.ModelInfo, error)
 	LatestVersion(ctx context.Context, h agentwire.Harness) (string, error)
 	InvalidateModels(h agentwire.Harness)
+	Asset(ctx context.Context, h agentwire.Harness, version, goos, goarch string) (agentwire.Asset, error)
 }
 
 // Facts are the vendor facts with no runtime. A nil field uses agent-wire.
@@ -165,10 +168,26 @@ type Options struct {
 	// harness. A variant runs the program of its base with its own home,
 	// login, and env. Install and update work on the base only.
 	Variants func() map[string]string
+	// HTTPClient reads the release metadata and downloads the files. Nil uses
+	// a default client. A download ignores its total timeout.
+	HTTPClient *http.Client
+	// Node sets the private Node runtime for npm installs.
+	Node NodeOptions
 	// UserHome is the home folder of the user. Empty uses the home of the
 	// process user.
 	UserHome string
 	Logger   *slog.Logger
+}
+
+// NodeOptions sets the private Node runtime. The visor downloads it when an
+// npm install finds no npm on the install path.
+type NodeOptions struct {
+	// Version is the Node version. Empty uses DefaultNodeVersion.
+	Version string
+	// BaseURL is the download site. Empty uses the official site.
+	BaseURL string
+	// Off stops the download. An npm install then needs npm on the path.
+	Off bool
 }
 
 // Manager keeps the harness inventory of one visor.
@@ -183,6 +202,9 @@ type Manager struct {
 	ctx    context.Context //nolint:containedctx // the lifetime context that Close cancels
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	// nodeMu orders the download of the private Node.
+	nodeMu sync.Mutex
 
 	// homeMu orders the writes of the harness homes.
 	homeMu sync.Mutex
@@ -264,6 +286,9 @@ var (
 	ErrState       = errors.New("harness: wrong state")
 	ErrBusy        = errors.New("harness: busy")
 	ErrUnsupported = errors.New("harness: not supported")
+	// ErrDownload means that a download failed: the network, an HTTP status
+	// of 400 or more, a wrong size, or a wrong checksum.
+	ErrDownload = errors.New("harness: download failed")
 )
 
 var (
@@ -355,7 +380,7 @@ func (m *Manager) Harness(ctx context.Context, name string) (Harness, error) {
 		return Harness{}, err
 	}
 	out := Harness{
-		Name: name, Installable: base == name && hasRecipe && r.Method == agentwire.InstallNPM, Installs: m.installs(name),
+		Name: name, Installable: base == name && hasRecipe && m.canInstall(r), Installs: m.installs(name),
 		AuthMode: st.mode(), Limits: st.Limits, EnvKeys: slices.Sorted(maps.Keys(env)), Latest: m.cachedLatest(base),
 		Updates: ust.updates(), Pending: ust.Pending, History: ust.History,
 	}
@@ -551,6 +576,31 @@ func (m *Manager) Close(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// canInstall reports whether the visor can make its own copy of the harness.
+func (m *Manager) canInstall(r agentwire.InstallRecipe) bool {
+	switch r.Method {
+	case agentwire.InstallBinary:
+		if r.Download == nil {
+			return false
+		}
+		_, ok := r.Download.Platforms[runtime.GOOS+"/"+runtime.GOARCH]
+		return ok
+	case agentwire.InstallNPM:
+		if _, err := m.lookPath("npm"); err != nil {
+			if _, _, err := m.nodePlatform(); m.o.Node.Off || err != nil {
+				return false
+			}
+		}
+		for _, req := range r.Requires {
+			if _, err := m.lookPath(req); req != "npm" && err != nil {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 func (m *Manager) known(name string) bool { return slices.Contains(m.names, m.base(name)) }

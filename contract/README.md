@@ -14,7 +14,7 @@ A client in another language vendors these files byte-identical. A break bumps t
 
 `POST /v1/upgrade` takes an upgrade spec (`fixtures/upgrade_spec.json`) and answers with `info`. `info.upgrade` gives the build of a pending upgrade. A hello with a `binary` of a newer build schedules the same upgrade. The visor waits until no session in a turn needs its process, no attach client is open, and no harness login, install, or update runs, for 24 hours at most, or 10 minutes when the protocol major changes. Then it writes the event `visor.restarting`, closes the socket, and runs the binary. A client connects again and reads the events after its last seq.
 
-Errors have the body `{"error": {"code": "...", "message": "..."}}`. The codes are `not_found`, `invalid`, `state`, `busy`, `closed`, `unsupported`, `protocol`, and `internal`.
+Errors have the body `{"error": {"code": "...", "message": "..."}}`. The codes are `not_found`, `invalid`, `state`, `busy`, `closed`, `unsupported`, `protocol`, `stale`, `download`, and `internal`.
 
 The event stream `GET /v1/events?after=<seq>` sends one JSON event in each text frame: first the events after `after` from the log, then the live events, with no gaps and no duplicates. Close code 4001 means that the visor stops; 4002 means that the stream failed. A client connects again with the last seq that it got.
 

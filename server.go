@@ -65,6 +65,7 @@ var errorCodes = []struct {
 	{"unsupported", ErrUnsupported, http.StatusNotImplemented},
 	{"protocol", ErrProtocol, http.StatusBadRequest},
 	{"stale", ErrStale, http.StatusPreconditionFailed},
+	{"download", ErrDownload, http.StatusBadGateway},
 }
 
 const maxBody = 8 << 20

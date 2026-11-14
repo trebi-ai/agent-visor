@@ -1,12 +1,15 @@
 package harness
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -21,9 +24,9 @@ const (
 )
 
 // Install installs a visor copy of the harness in bin/<name>/<version>/ and
-// moves the current link to it. An empty version is the latest release. A
-// harness with no npm recipe runs the vendor install instead, and gets the
-// latest release. A failed install leaves the current link as it was. It
+// moves the current link to it. An empty version is the latest release. The
+// copy comes from a vendor download or from npm. A harness with another
+// recipe runs the vendor install instead, and gets the latest release. A failed install leaves the current link as it was. It
 // returns ErrBusy when a live session uses the harness, because the switch
 // must not change the binary under a running session.
 func (m *Manager) Install(ctx context.Context, name, version string) (Harness, error) {
@@ -38,16 +41,18 @@ func (m *Manager) Install(ctx context.Context, name, version string) (Harness, e
 		return Harness{}, fmt.Errorf("%w: version %q", ErrInvalid, version)
 	}
 	r, ok := m.o.Facts.Recipe(m.kind(name))
-	if ok && r.Method != agentwire.InstallNPM && len(r.Command(version)) > 0 {
+	copyable := ok && (r.Method == agentwire.InstallNPM || r.Method == agentwire.InstallBinary)
+	if ok && !copyable && len(r.Command(version)) > 0 {
 		return m.installSystem(ctx, name, r)
 	}
-	if !ok || r.Method != agentwire.InstallNPM {
+	if !copyable {
 		return Harness{}, fmt.Errorf("%w: the visor cannot install %s", ErrUnsupported, name)
 	}
 	return m.installCopy(ctx, name, r, version)
 }
 
-// installCopy installs a visor copy with the npm recipe and switches to it.
+// installCopy installs a visor copy with the binary or the npm recipe and
+// switches to it.
 func (m *Manager) installCopy(ctx context.Context, name string, r agentwire.InstallRecipe, version string) (Harness, error) {
 	done, err := m.begin(name, "install")
 	if err != nil {
@@ -58,12 +63,20 @@ func (m *Manager) installCopy(ctx context.Context, name string, r agentwire.Inst
 		return Harness{}, fmt.Errorf("%w: a live session uses %s", ErrBusy, name)
 	}
 	if version == "" {
-		if v, err := m.lookupLatest(ctx, name); err == nil {
+		v, err := m.lookupLatest(ctx, name)
+		if err == nil {
 			version = v
+		} else if r.Method == agentwire.InstallBinary {
+			return Harness{}, fmt.Errorf("install %s: %w", name, wireErr(err))
 		}
 	}
 	if version == "" || !m.hasVersion(name, r, version) {
-		if version, err = m.installNPM(ctx, name, r, version); err != nil {
+		if r.Method == agentwire.InstallBinary {
+			err = m.installBinary(ctx, name, r, version, m.binDir(name))
+		} else {
+			version, err = m.installNPM(ctx, name, r, version)
+		}
+		if err != nil {
 			return Harness{}, err
 		}
 	}
@@ -96,13 +109,93 @@ func (m *Manager) installSystem(ctx context.Context, name string, r agentwire.In
 	return m.Harness(ctx, name)
 }
 
+// wireErr tells a failed vendor lookup from an unsupported one.
+func wireErr(err error) error {
+	if errors.Is(err, agentwire.ErrUnsupported) {
+		return fmt.Errorf("%w: %w", ErrUnsupported, err)
+	}
+	if errors.Is(err, ErrDownload) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", ErrDownload, err)
+}
+
+// installBinary downloads the release into a new folder, checks it, and moves
+// the folder to dir/<version>/. On a failure it removes the new folder.
+func (m *Manager) installBinary(ctx context.Context, name string, r agentwire.InstallRecipe, version, dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("install %s: %w", name, err)
+	}
+	a, err := m.wire.Asset(ctx, m.kind(name), version, runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return fmt.Errorf("install %s: %w", name, wireErr(err))
+	}
+	if !filepath.IsLocal(filepath.FromSlash(a.Program)) {
+		return fmt.Errorf("install %s: %w: program path %q", name, ErrInvalid, a.Program)
+	}
+	tmp, err := os.MkdirTemp(dir, ".install-")
+	if err != nil {
+		return fmt.Errorf("install %s: %w", name, err)
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			m.removeAll(tmp)
+		}
+	}()
+	d := download{url: a.URL, digest: a.Digest, size: a.Size, kind: a.Archive}
+	if err := m.fetchTo(ctx, d, tmp, a.Program); err != nil {
+		return fmt.Errorf("install %s: %w", name, err)
+	}
+	prog := filepath.Join(tmp, filepath.FromSlash(a.Program))
+	if _, err := os.Stat(prog); err != nil {
+		// Some archives hold the program at the root.
+		root := filepath.Join(tmp, path.Base(a.Program))
+		if err := os.MkdirAll(filepath.Dir(prog), 0o755); err != nil { //nolint:gosec // the install folder is not secret
+			return fmt.Errorf("install %s: %w", name, err)
+		}
+		if err := os.Rename(root, prog); err != nil {
+			return fmt.Errorf("install %s: the download has no %s", name, a.Program)
+		}
+	}
+	if err := os.Chmod(prog, 0o755); err != nil { //nolint:gosec // a program
+		return fmt.Errorf("install %s: %w", name, err)
+	}
+	if v := cleanVersion(m.wire.Version(ctx, prog)); !versionRE.MatchString(v) {
+		return fmt.Errorf("install %s: %s gives no version", name, r.Bin)
+	}
+	dst := filepath.Join(dir, version)
+	if err := os.RemoveAll(dst); err != nil {
+		return fmt.Errorf("install %s: %w", name, err)
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		return fmt.Errorf("install %s: %w", name, err)
+	}
+	ok = true
+	return nil
+}
+
 // installNPM runs the npm recipe into a new folder and moves the folder to
 // bin/<name>/<version>/. An empty version reads the version from the new
-// binary. On a failure it removes the new folder.
+// binary. With no npm on the path, it runs npm of the private Node, and the
+// new program starts that Node. On a failure it removes the new folder.
 func (m *Manager) installNPM(ctx context.Context, name string, r agentwire.InstallRecipe, version string) (string, error) {
 	dir := m.binDir(name)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("install %s: %w", name, err)
+	}
+	argv := r.Command(version)
+	env := map[string]string{}
+	nodeDir := ""
+	if _, err := m.lookPath("npm"); err != nil {
+		if m.o.Node.Off {
+			return "", fmt.Errorf("install %s: %w", name, err)
+		}
+		if nodeDir, err = m.node(ctx); err != nil {
+			return "", fmt.Errorf("install %s: %w", name, err)
+		}
+		argv[0] = filepath.Join(nodeDir, "bin", "npm")
+		env["PATH"] = filepath.Join(nodeDir, "bin") + string(os.PathListSeparator) + cmp.Or(m.o.Path, os.Getenv("PATH"))
 	}
 	tmp, err := os.MkdirTemp(dir, ".install-")
 	if err != nil {
@@ -111,17 +204,21 @@ func (m *Manager) installNPM(ctx context.Context, name string, r agentwire.Insta
 	ok := false
 	defer func() {
 		if !ok {
-			if err := os.RemoveAll(tmp); err != nil {
-				m.log.Warn("remove a failed install", "harness", name, "err", err)
-			}
+			m.removeAll(tmp)
 		}
 	}()
-	if _, err := m.run(ctx, r.Command(version), map[string]string{"NPM_CONFIG_PREFIX": tmp}, installTimeout); err != nil {
+	env["NPM_CONFIG_PREFIX"] = tmp
+	if _, err := m.run(ctx, argv, env, installTimeout); err != nil {
 		return "", fmt.Errorf("install %s: %w", name, err)
 	}
 	bin := filepath.Join(tmp, "bin", r.Bin)
 	if _, err := os.Stat(bin); err != nil {
 		return "", fmt.Errorf("install %s: the install made no %s", name, r.Bin)
+	}
+	if nodeDir != "" {
+		if err := wrapNode(bin, tmp, nodeDir); err != nil {
+			return "", fmt.Errorf("install %s: %w", name, err)
+		}
 	}
 	if version == "" {
 		version = cleanVersion(m.wire.Version(ctx, bin))
@@ -139,6 +236,35 @@ func (m *Manager) installNPM(ctx context.Context, name string, r agentwire.Insta
 	ok = true
 	return version, nil
 }
+
+// wrapNode replaces the npm link bin with a script that runs the package
+// script with the private Node. The script finds the package from its own
+// place, so the folder can move. A bin that is not a link stays as it is.
+func wrapNode(bin, root, nodeDir string) error {
+	if fi, err := os.Lstat(bin); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		return err
+	}
+	real, err := filepath.EvalSymlinks(bin)
+	if err != nil {
+		return err
+	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(realRoot, real)
+	if err != nil || !filepath.IsLocal(rel) {
+		return fmt.Errorf("the program %s is outside the install", filepath.Base(bin))
+	}
+	script := "#!/bin/sh\nd=$(cd \"$(dirname \"$0\")\" && pwd)\nexec " + shellQuote(filepath.Join(nodeDir, "bin", "node")) +
+		" \"$d/../" + filepath.ToSlash(rel) + "\" \"$@\"\n"
+	if err := os.Remove(bin); err != nil {
+		return err
+	}
+	return os.WriteFile(bin, []byte(script), 0o755) //nolint:gosec // a program
+}
+
+func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 // switchTo moves the current link to version, and removes the versions
 // other than the new one and the one before it.
@@ -211,7 +337,7 @@ func (m *Manager) hasVersion(name string, r agentwire.InstallRecipe, version str
 func (m *Manager) binDir(name string) string { return filepath.Join(m.home, "bin", name) }
 
 func (m *Manager) binPath(name string, r agentwire.InstallRecipe, version string) string {
-	return filepath.Join(m.binDir(name), version, "bin", r.Bin)
+	return filepath.Join(m.binDir(name), version, filepath.FromSlash(r.ProgramPath()))
 }
 
 // run runs one command with env on top of the process env. The error holds

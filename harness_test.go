@@ -84,6 +84,7 @@ func TestHarnessLaunchLayers(t *testing.T) {
 		Harness: HarnessOptions{
 			Names: []string{"fakeh"},
 			Path:  t.TempDir(),
+			Node:  HarnessNodeOptions{Off: true},
 			Facts: HarnessFacts{
 				Recipe: func(h agentwire.Harness) (agentwire.InstallRecipe, bool) {
 					return agentwire.InstallRecipe{Harness: h, Method: agentwire.InstallNPM, Package: "fake-pkg", Bin: "fakeh"}, true
@@ -378,7 +379,7 @@ echo 1.0.0
 	v, err := New(t.Context(), Options{
 		Home: home, Client: "test",
 		Harness: HarnessOptions{
-			Names: []string{"fakeh"}, Path: t.TempDir(), UserHome: t.TempDir(),
+			Names: []string{"fakeh"}, Path: t.TempDir(), UserHome: t.TempDir(), Node: HarnessNodeOptions{Off: true},
 			Facts: HarnessFacts{
 				Recipe: func(h agentwire.Harness) (agentwire.InstallRecipe, bool) {
 					return agentwire.InstallRecipe{Harness: h, Method: agentwire.InstallNPM, Package: "fake-pkg", Bin: "fakeh"}, true

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -109,6 +111,7 @@ func TestClientHarnesses(t *testing.T) {
 		Harness: HarnessOptions{
 			Names: []string{"fakeh"},
 			Path:  t.TempDir(),
+			Node:  HarnessNodeOptions{Off: true},
 			Facts: HarnessFacts{
 				Recipe: func(h agentwire.Harness) (agentwire.InstallRecipe, bool) {
 					return agentwire.InstallRecipe{Harness: h, Method: agentwire.InstallNPM, Package: "fake-pkg", Bin: "fakeh"}, true
@@ -152,3 +155,52 @@ func TestClientHarnesses(t *testing.T) {
 		t.Fatalf("harness: %s", data)
 	}
 }
+
+func TestClientDownloadError(t *testing.T) {
+	t.Parallel()
+	// Each request gets a 503, so the test never reaches a vendor site.
+	down := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusServiceUnavailable, Status: "503 Service Unavailable",
+			Body: io.NopCloser(strings.NewReader("")), Header: http.Header{}, Request: r}, nil
+	})}
+	v, err := New(t.Context(), Options{
+		Home:    shortHome(t),
+		Harness: HarnessOptions{Names: []string{"claude"}, HTTPClient: down, Node: HarnessNodeOptions{Off: true}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sock := shortSocket(t)
+	ts := serveTest(t, v, sock)
+	defer ts.stop(t)
+	c := dialTest(t, sock)
+	defer c.Close(t.Context())
+	if _, err := c.InstallHarness(t.Context(), "claude", "1.0.0"); !errors.Is(err, ErrDownload) {
+		t.Fatalf("install while the vendor is down: %v", err)
+	}
+	// The wire code is "download" with status 502.
+	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "unix", sock)
+	}}}
+	defer hc.CloseIdleConnections()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "http://visor/v1/harnesses/claude/install", strings.NewReader(`{"version":"1.0.0"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }() // test cleanup
+	var body errorBody
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusBadGateway || body.Error.Code != "download" {
+		t.Fatalf("response: %d %+v", resp.StatusCode, body)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

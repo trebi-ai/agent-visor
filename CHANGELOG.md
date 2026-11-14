@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.0 (2026-11-14)
+
+- Install Claude Code, Codex, and OpenCode from the vendor download, with no npm and no Node (agent-wire v0.13.0). `Install` and `Update` fetch the release file, check its size and sha256, unpack it with a safe unpacker, and run the `--version` check before the switch. A failed install leaves no files behind.
+- Add `harness.ErrDownload` and `agentvisor.ErrDownload` for a failed download: the network, an HTTP status of 400 or more, a wrong size, or a wrong checksum. The socket code is `download` with HTTP status 502.
+- Add the private Node runtime. An npm install with no npm on the install path downloads Node (default 24.22.2) to `<home>/runtime/node/v<version>`, checks it against `SHASUMS256.txt`, runs npm from it, and writes a `bin/<name>` wrapper that starts the package with that Node. `harness.Options.Node` (`harness.NodeOptions`, alias `HarnessNodeOptions`) sets the version and the download site, or turns the download off.
+- Add `harness.Options.HTTPClient`. The visor also gives it to agent-wire. A download ignores its total timeout.
+- `Harness.Installable` is true for a binary recipe on a listed platform, and for an npm recipe when npm or the private Node is available and the other required programs are on the path.
+- The program of a visor copy sits at `Recipe.ProgramPath()`. The copy of a system install uses the same path.
+- Breaking for `harness.Wire`: it needs the new `Asset` method. `*agentwire.Runtime` has it.
+
 ## v0.5.2 (2026-11-09)
 
 - Fix the lint error in the tests of v0.5.1. The code does not change.

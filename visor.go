@@ -159,6 +159,9 @@ var (
 	ErrProtocol = errors.New("agentvisor: unknown protocol")
 	// ErrStale is a write with an old etag.
 	ErrStale = errors.New("agentvisor: changed since the read")
+	// ErrDownload means that the download of a harness failed: the network,
+	// an HTTP status of 400 or more, a wrong size, or a wrong checksum.
+	ErrDownload = errors.New("agentvisor: download failed")
 )
 
 // New opens the visor in home, recovers the sessions of the last run, and
@@ -187,7 +190,7 @@ func New(ctx context.Context, o Options) (*Visor, error) {
 	v.workdirs = workdir.New(st, filepath.Join(o.Home, "worktrees"), o.Logger, v.onScript)
 	v.wire = agentwire.New(agentwire.Options{
 		ClientName: o.Client, ClientVersion: o.ClientVersion, LedgerPath: filepath.Join(o.Home, "ledger.json"),
-		Logger: o.Logger.With("source", "wire"),
+		Logger: o.Logger.With("source", "wire"), HTTPClient: o.Harness.HTTPClient,
 	})
 	for h, d := range o.Drivers {
 		v.wire.SetDriver(agentwire.Harness(h), d)

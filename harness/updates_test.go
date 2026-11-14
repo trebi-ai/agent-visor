@@ -4,7 +4,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
+
+	agentwire "github.com/trebi-ai/agent-wire"
 )
 
 // fakeSystem is a system install of fakeh. It keeps its version in a side
@@ -129,6 +132,36 @@ func TestCheckAutoAndPending(t *testing.T) {
 	}
 	if h, _ = r.m.Harness(ctx, "fakeh"); len(h.History) != n {
 		t.Fatalf("a failed version check went into the history: %+v", h.History[n:])
+	}
+}
+
+func TestUpdateBinaryCopy(t *testing.T) {
+	t.Parallel()
+	r, bin := systemRig(t)
+	// The program of a binary recipe sits outside bin/, with its side file.
+	prog := "libexec/fakeh"
+	r.m.o.Facts.Recipe = func(h agentwire.Harness) (agentwire.InstallRecipe, bool) {
+		return agentwire.InstallRecipe{Harness: h, Method: agentwire.InstallBinary, Bin: "fakeh", Update: []string{"update"}, UpdateTo: []string{"update", "--to"},
+			Download: &agentwire.Download{Program: prog, Platforms: map[string]string{runtime.GOOS + "/" + runtime.GOARCH: "p"}}}, true
+	}
+	ctx := t.Context()
+	h, err := r.m.SetUpdates(ctx, "fakeh", UpdatesKeep, "")
+	want := filepath.Join(r.home, "bin", "fakeh", "1.0.0", filepath.FromSlash(prog))
+	if err != nil || h.Source != SourceVisor || h.Version != "1.0.0" || h.Path != want {
+		t.Fatalf("keep: %+v %v", h, err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(want), "fakeh-version")); err != nil {
+		t.Fatalf("side file: %v", err)
+	}
+	// An update of the system install keeps the new version as a copy.
+	if h, err = r.m.Update(ctx, "fakeh", "1.5.0"); err != nil || h.Source != SourceVisor || h.Version != "1.5.0" {
+		t.Fatalf("update: %+v %v", h, err)
+	}
+	if _, err := os.Stat(bin); err != nil {
+		t.Fatal(err)
+	}
+	if h, err = r.m.SetUpdates(ctx, "fakeh", UpdatesAuto, ""); err != nil || h.Source != SourceSystem || len(h.Installs) != 0 {
+		t.Fatalf("auto: %+v %v", h, err)
 	}
 }
 

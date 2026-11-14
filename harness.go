@@ -15,6 +15,9 @@ type Harness = harness.Harness
 // HarnessOptions configures the harness inventory.
 type HarnessOptions = harness.Options
 
+// HarnessNodeOptions sets the private Node runtime for npm installs.
+type HarnessNodeOptions = harness.NodeOptions
+
 // HarnessFacts are the vendor facts that the inventory reads, for tests.
 type HarnessFacts = harness.Facts
 
@@ -362,6 +365,8 @@ func mapHarnessErr(err error) error {
 		return fmt.Errorf("%w: %w", ErrStale, err)
 	case errors.Is(err, harness.ErrNoBackup):
 		return fmt.Errorf("%w: %w", ErrNotFound, err)
+	case errors.Is(err, harness.ErrDownload):
+		return fmt.Errorf("%w: %w", ErrDownload, err)
 	case errors.Is(err, harness.ErrUnsupported):
 		return fmt.Errorf("%w: %w", ErrUnsupported, err)
 	default:

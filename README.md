@@ -13,7 +13,7 @@ Status: early. The library core works in the process. The socket, the CLI, and t
 - Keeps an event log with a sequence number. A client that connects again reads the events that it missed.
 - Lets a client attach to a session as a terminal or as a chat view, and hand a session over between the two.
 - Finds projects from paths and manages workdirs: the main checkout, git worktrees, and plain folders.
-- Detects, installs, updates, and logs in to the harnesses (Claude Code, Codex, and others), and lists their models.
+- Detects, installs, updates, and logs in to the harnesses (Claude Code, Codex, and others), and lists their models. It installs Claude Code, Codex, and OpenCode from the vendor download, and the others with npm. When the machine has no npm, it downloads a private Node.
 - Takes hook calls from sessions that a user starts outside the visor, and shows them as observed sessions. A hook call can carry labels, which join it to a session of a backend.
 - Takes optional backends. `backend/orca` runs sessions in the terminals of the Orca app.
 - Upgrades itself when no session needs it.

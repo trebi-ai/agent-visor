@@ -52,6 +52,8 @@ type fakeWire struct {
 	latest  string
 	system  string
 	lookups atomic.Int32
+	// asset answers Asset. Nil means that the vendor has no download.
+	asset func(version string) (agentwire.Asset, error)
 }
 
 type rig struct {
@@ -100,6 +102,16 @@ func (w *fakeWire) LatestVersion(context.Context, agentwire.Harness) (string, er
 }
 
 func (w *fakeWire) InvalidateModels(agentwire.Harness) {}
+
+func (w *fakeWire) Asset(_ context.Context, _ agentwire.Harness, version, _, _ string) (agentwire.Asset, error) {
+	w.mu.Lock()
+	f := w.asset
+	w.mu.Unlock()
+	if f == nil {
+		return agentwire.Asset{}, agentwire.ErrUnsupported
+	}
+	return f(version)
+}
 
 type lockedWriter struct {
 	mu *sync.Mutex

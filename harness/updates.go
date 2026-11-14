@@ -373,17 +373,18 @@ func (m *Manager) copyProgram(name string, r agentwire.InstallRecipe, bin, versi
 	if err := os.RemoveAll(tmp); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Join(tmp, "bin"), 0o700); err != nil {
+	prog := filepath.Join(tmp, filepath.FromSlash(r.ProgramPath()))
+	if err := os.MkdirAll(filepath.Dir(prog), 0o700); err != nil {
 		return err
 	}
-	if err := copyFile(real, filepath.Join(tmp, "bin", r.Bin)); err != nil {
+	if err := copyFile(real, prog); err != nil {
 		return err
 	}
 	base := filepath.Base(real)
 	entries, _ := os.ReadDir(filepath.Dir(real)) // no folder: no side files
 	for _, e := range entries {
 		if e.Type().IsRegular() && strings.HasPrefix(e.Name(), base+"-") {
-			if err := copyFile(filepath.Join(filepath.Dir(real), e.Name()), filepath.Join(tmp, "bin", e.Name())); err != nil {
+			if err := copyFile(filepath.Join(filepath.Dir(real), e.Name()), filepath.Join(filepath.Dir(prog), e.Name())); err != nil {
 				return err
 			}
 		}
