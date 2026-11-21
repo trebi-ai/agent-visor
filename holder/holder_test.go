@@ -187,6 +187,30 @@ func TestPTYHolderRefusesOldPeer(t *testing.T) {
 	}
 }
 
+func TestPTYSnapshotAfterWrap(t *testing.T) {
+	t.Parallel()
+	dir := shortDir(t)
+	cfg := Config{
+		ID: "wrap", Socket: filepath.Join(dir, "h.sock"), ExitFile: filepath.Join(dir, "wrap.exit"),
+		Command: []string{"sh", "-c", `yes 0123456789abcdef | head -c 614400; echo END; read -r l`},
+	}
+	go func() { _ = Run(t.Context(), cfg) }() //nolint:errcheck // the test ends the holder with its context
+	c := dial(t, cfg.Socket)
+	defer c.Close()
+	var out bytes.Buffer
+	readUntil(t, c, &out, func(Msg) bool { return bytes.HasSuffix(out.Bytes(), []byte("END\r\n")) })
+	if out.Len() < DefaultRing {
+		t.Fatalf("output %d bytes", out.Len())
+	}
+	second := dial(t, cfg.Socket)
+	defer second.Close()
+	var snap bytes.Buffer
+	readUntil(t, second, &snap, func(m Msg) bool { return m.Type == MsgSnapshot })
+	if want := out.Bytes()[out.Len()-DefaultRing:]; !bytes.Equal(snap.Bytes(), want) {
+		t.Fatalf("snapshot of %d bytes differs from the last %d bytes of the output", snap.Len(), DefaultRing)
+	}
+}
+
 func shortDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "hd")

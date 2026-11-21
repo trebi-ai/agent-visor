@@ -56,7 +56,7 @@ type ptyHandle struct {
 	c        *holder.Client
 	pid      int
 	size     holder.Size
-	ring     []byte
+	ring     holder.Ring
 	subs     map[*AttachStream]struct{}
 	lease    *AttachStream
 	detached bool
@@ -428,7 +428,7 @@ func (h *ptyHandle) join(a *AttachStream, o AttachOptions, title string) error {
 	h.subs[a] = struct{}{}
 	a.queue = []Frame{
 		{Type: FrameAttached, View: ViewTerminal, Source: KindPTY, Cols: h.size.Cols, Rows: h.size.Rows, Writable: true, Resizable: true, Title: title},
-		{Op: OpSnapshot, Data: bytes.Clone(h.ring)},
+		{Op: OpSnapshot, Data: bytes.Clone(h.ring.Bytes())},
 	}
 	take := h.lease == nil && o.Cols > 0 && o.Rows > 0
 	if !take {
@@ -498,14 +498,15 @@ func (h *ptyHandle) holderFor(a *AttachStream) LeaseHolder {
 func (h *ptyHandle) resnapshot(a *AttachStream) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	a.resync(bytes.Clone(h.ring))
+	a.resync(bytes.Clone(h.ring.Bytes()))
 }
 
 // snapshot replaces the screen buffer after a connect. Each attachment gets
 // the new buffer.
 func (h *ptyHandle) snapshot(p []byte) {
 	h.mu.Lock()
-	h.ring, h.pending, h.stale = p, nil, true
+	h.ring.Reset(p)
+	h.pending, h.stale = nil, true
 	h.paste = pasteMode(p, false)
 	if h.fresh {
 		h.pending = bytes.Clone(p)
@@ -521,15 +522,12 @@ func (h *ptyHandle) snapshot(p []byte) {
 
 func (h *ptyHandle) output(p []byte) {
 	h.mu.Lock()
-	h.ring = append(h.ring, p...)
-	if over := len(h.ring) - holder.DefaultRing; over > 0 {
-		h.ring = append(h.ring[:0:0], h.ring[over:]...)
-	}
+	h.ring.Write(p)
 	if len(h.pending)+len(p) > holder.DefaultRing {
 		h.pending, h.stale = nil, true
 	}
 	h.pending = append(h.pending, p...)
-	h.paste = pasteMode(h.ring[max(0, len(h.ring)-len(p)-8):], h.paste)
+	h.paste = pasteMode(h.ring.Bytes()[max(0, h.ring.Len()-len(p)-8):], h.paste)
 	if dsrQuery.Match(h.pending[max(0, len(h.pending)-len(p)-16):]) {
 		h.render(true)
 	}
@@ -560,7 +558,7 @@ func (h *ptyHandle) answer(send bool) {
 func (h *ptyHandle) tail() []byte {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return bytes.Clone(h.ring)
+	return bytes.Clone(h.ring.Bytes())
 }
 
 // render brings the emulator up to date. The caller holds h.mu. With keep
@@ -569,7 +567,8 @@ func (h *ptyHandle) tail() []byte {
 func (h *ptyHandle) render(keep bool) {
 	if h.stale {
 		h.vt = h.newVT()
-		old := h.ring[:max(0, len(h.ring)-len(h.pending))]
+		b := h.ring.Bytes()
+		old := b[:max(0, len(b)-len(h.pending))]
 		_, _ = h.vt.Write(old) // the emulator never fails a write
 		h.answers, h.stale = nil, false
 	}

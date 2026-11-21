@@ -383,6 +383,36 @@ func TestSlowReaderGetsEveryEvent(t *testing.T) {
 	})
 }
 
+func TestSubscriberOverflowReplays(t *testing.T) {
+	t.Parallel()
+	v := newTestVisor(t, t.TempDir(), scriptFlood, nil)
+	defer v.Close(context.Background())
+	sub, _ := v.events.subscribe(func(Event) bool { return true })
+	st, err := v.Events(t.Context(), Filter{}, v.events.head())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	const total = subBuffer + 500
+	for range total {
+		if _, err := v.events.append(t.Context(), Event{Type: EventHook}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := 0
+	for range sub.ch {
+		got++
+	}
+	if got != subBuffer || !errors.Is(sub.err, errOverflow) {
+		t.Fatalf("got %d events and error %v, want %d and an overflow", got, sub.err, subBuffer)
+	}
+	events := collect(t, st, func(e Event) bool { return e.Seq >= v.events.head() })
+	checkSeq(t, events, events[0].Seq-1)
+	if len(events) != total {
+		t.Fatalf("stream gave %d events, want %d", len(events), total)
+	}
+}
+
 func TestEnvValuesStayInside(t *testing.T) {
 	t.Parallel()
 	eachHost(t, func(t *testing.T, open opener) {

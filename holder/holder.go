@@ -64,7 +64,7 @@ type server struct {
 	wmu    sync.Mutex // writes to the PTY
 
 	mu    sync.Mutex
-	ring  []byte
+	ring  Ring
 	logf  *os.File
 	size  Size
 	peers map[*peer]struct{}
@@ -114,7 +114,7 @@ func Run(ctx context.Context, c Config) error {
 	}
 	s := &server{
 		cfg: c, log: cmp.Or(c.Logger, slog.Default()).With("source", "holder", "session_id", c.ID),
-		exited: make(chan struct{}), peers: map[*peer]struct{}{},
+		ring: NewRing(c.Ring), exited: make(chan struct{}), peers: map[*peer]struct{}{},
 		size: Size{Cols: cmp.Or(c.Cols, defaultCols), Rows: cmp.Or(c.Rows, defaultRows)},
 	}
 	ln, err := listen(ctx, c.Socket)
@@ -208,11 +208,7 @@ func (s *server) readLoop(done chan<- struct{}) {
 func (s *server) output(p []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	limit := cmp.Or(s.cfg.Ring, DefaultRing)
-	s.ring = append(s.ring, p...)
-	if over := len(s.ring) - limit; over > 0 {
-		s.ring = append(s.ring[:0:0], s.ring[over:]...)
-	}
+	s.ring.Write(p)
 	if s.logf != nil {
 		if _, err := s.logf.Write(p); err != nil {
 			s.log.Warn("write the output log", "err", err)
@@ -297,7 +293,7 @@ func (s *server) join(conn net.Conn) (*peer, error) {
 	p := &peer{conn: conn, out: make(chan []byte, peerQueue)}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p.out <- encodeMsg(MsgSnapshot, s.ring)
+	p.out <- encodeMsg(MsgSnapshot, s.ring.Bytes())
 	if s.exit != nil {
 		exit, _ := json.Marshal(s.exit) //nolint:errchkjson // a plain struct
 		p.out <- encodeMsg(MsgExit, exit)

@@ -69,6 +69,8 @@ type wireServer struct {
 	wg    sync.WaitGroup
 	// acked signals a new ack.
 	acked chan struct{}
+	// callDone signals that a call replied.
+	callDone chan struct{}
 
 	mu      sync.Mutex
 	peer    *peer
@@ -122,7 +124,7 @@ func ReadSpool(path string) (Spool, error) {
 func runWire(ctx context.Context, c Config) error {
 	s := &wireServer{
 		cfg: c, log: cmp.Or(c.Logger, slog.Default()).With("source", "holder", "session_id", c.ID, "mode", ModeWire),
-		run: newRun(), start: time.Now().UTC(), acked: make(chan struct{}, 1),
+		run: newRun(), start: time.Now().UTC(), acked: make(chan struct{}, 1), callDone: make(chan struct{}, 1),
 	}
 	w := c.Wire
 	s.rt = agentwire.New(agentwire.Options{
@@ -368,6 +370,10 @@ func (s *wireServer) call(p *peer, c Call) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.calls--
+	select {
+	case s.callDone <- struct{}{}:
+	default:
+	}
 	if s.peer == p {
 		s.sendLocked(p, MsgReply, r)
 	}
@@ -511,7 +517,8 @@ func (s *wireServer) finish() {
 // waitCalls waits a short time for the replies of the open calls. A send can
 // end the vendor process, and its reply must go out before the exit.
 func (s *wireServer) waitCalls() {
-	deadline := time.Now().Add(ackWait)
+	timer := time.NewTimer(ackWait)
+	defer timer.Stop()
 	for {
 		s.mu.Lock()
 		open := s.calls
@@ -519,11 +526,12 @@ func (s *wireServer) waitCalls() {
 		if open == 0 {
 			return
 		}
-		if time.Now().After(deadline) {
+		select {
+		case <-s.callDone:
+		case <-timer.C:
 			s.log.Warn("a call did not reply before the exit", "calls", open)
 			return
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
 }
 

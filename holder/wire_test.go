@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -159,6 +160,37 @@ func TestWireReplyBeforeExit(t *testing.T) {
 	}
 }
 
+func TestWaitCallsReturnsOnReply(t *testing.T) {
+	t.Parallel()
+	s := newCallServer()
+	s.calls = 1
+	replied := make(chan time.Time, 1)
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		finishCall(s)
+		replied <- time.Now()
+	}()
+	s.waitCalls()
+	done := time.Now()
+	if late := done.Sub(<-replied); late > 25*time.Millisecond {
+		t.Fatalf("waitCalls returned %s after the reply", late)
+	}
+}
+
+func TestWaitCallsDeadline(t *testing.T) {
+	if testing.Short() {
+		t.Skip("waits for ackWait")
+	}
+	t.Parallel()
+	s := newCallServer()
+	s.calls = 1
+	start := time.Now()
+	s.waitCalls()
+	if d := time.Since(start); d < ackWait || d > ackWait+time.Second {
+		t.Fatalf("waitCalls took %s, want about %s", d, ackWait)
+	}
+}
+
 func dialFrom(t *testing.T, path string, from Cursor) *Client {
 	t.Helper()
 	c, err := Dial(t.Context(), path, from)
@@ -174,5 +206,19 @@ func wireConfig(t *testing.T, id string) Config {
 	return Config{
 		ID: id, Mode: ModeWire, Socket: filepath.Join(dir, "w.sock"), ExitFile: filepath.Join(dir, "w.exit"), Spool: filepath.Join(dir, "w.spool"),
 		Wire: &WireConfig{Harness: "fake", WorkingDir: dir, Drivers: map[string]agentwire.Driver{"fake": agentwire.FakeDriver{Script: wireTurns}}},
+	}
+}
+
+func newCallServer() *wireServer {
+	return &wireServer{log: slog.New(slog.DiscardHandler), callDone: make(chan struct{}, 1)}
+}
+
+func finishCall(s *wireServer) {
+	s.mu.Lock()
+	s.calls--
+	s.mu.Unlock()
+	select {
+	case s.callDone <- struct{}{}:
+	default:
 	}
 }

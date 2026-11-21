@@ -289,9 +289,11 @@ type eventLog struct {
 	subs map[*subscriber]struct{}
 }
 
+// subscriber gets the live events. The events are shared. A reader must not
+// change them.
 type subscriber struct {
 	match func(Event) bool
-	ch    chan Event
+	ch    chan *Event
 	err   error
 }
 
@@ -326,7 +328,7 @@ func (l *eventLog) append(ctx context.Context, e Event) (Event, error) {
 			continue
 		}
 		select {
-		case sub.ch <- e:
+		case sub.ch <- &e:
 		default:
 			sub.err = errOverflow
 			delete(l.subs, sub)
@@ -345,7 +347,7 @@ func (l *eventLog) head() uint64 {
 func (l *eventLog) subscribe(match func(Event) bool) (*subscriber, uint64) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	sub := &subscriber{match: match, ch: make(chan Event, subBuffer)}
+	sub := &subscriber{match: match, ch: make(chan *Event, subBuffer)}
 	l.subs[sub] = struct{}{}
 	return sub, l.seq
 }
@@ -410,7 +412,7 @@ func (l *eventLog) live(ctx context.Context, s *EventStream, sub *subscriber, la
 			if e.Seq <= last {
 				continue
 			}
-			if !s.send(ctx, e) {
+			if !s.send(ctx, *e) {
 				l.unsubscribe(sub)
 				return last, ctx.Err()
 			}
