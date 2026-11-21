@@ -376,14 +376,7 @@ func (v *Visor) labeled(labels map[string]string) *record {
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	var out *record
-	for _, rec := range v.sessions {
-		s := rec.s
-		if s.State != StateExited && matchLabels(labels, s.Labels) && (out == nil || s.CreatedAt.After(out.s.CreatedAt)) {
-			out = rec
-		}
-	}
-	return out
+	return v.newestLocked(func(s *Session) bool { return matchLabels(labels, s.Labels) })
 }
 
 func (v *Visor) findObserved(e hooks.Event) *record {
@@ -395,15 +388,9 @@ func (v *Visor) findObserved(e hooks.Event) *record {
 // findObservedLocked gives the newest observed session of the vendor session
 // that has not exited. The caller holds v.mu.
 func (v *Visor) findObservedLocked(e hooks.Event) *record {
-	var out *record
-	for _, rec := range v.sessions {
-		s := rec.s
-		if s.Kind == KindObserved && s.Harness == e.Harness && s.VendorID == e.VendorID && s.State != StateExited &&
-			(out == nil || s.CreatedAt.After(out.s.CreatedAt)) {
-			out = rec
-		}
-	}
-	return out
+	return v.newestLocked(func(s *Session) bool {
+		return s.Kind == KindObserved && s.Harness == e.Harness && s.VendorID == e.VendorID
+	})
 }
 
 // applyHook changes the session for one hook event. A structured backend

@@ -31,9 +31,7 @@ type wireBackend struct {
 	cursor func(ctx context.Context, session string) (holder.Cursor, error)
 	log    *slog.Logger
 
-	mu      sync.Mutex
-	handles map[*heldWire]struct{}
-	wg      sync.WaitGroup
+	handles handleSet[*heldWire]
 }
 
 // wireHandle is a wire session in the visor process.
@@ -51,20 +49,14 @@ type heldWire struct {
 	b      *wireBackend
 	id     string
 	events chan Event
-	// stop closes on detach; done closes when the pump ends.
-	stop chan struct{}
-	done chan struct{}
-	once sync.Once
+	holderConn
 
-	mu       sync.Mutex
-	c        *holder.Client
 	vendor   string
 	pid      int
 	last     holder.Cursor
 	calls    map[uint64]chan holder.Reply
 	nextCall uint64
 	exit     *holder.Exit
-	detached bool
 }
 
 var (
@@ -85,7 +77,7 @@ const (
 func newWireBackend(rt *agentwire.Runtime, o Options, cursor func(context.Context, string) (holder.Cursor, error), log *slog.Logger) *wireBackend {
 	b := &wireBackend{
 		rt: rt, inproc: map[string]bool{}, home: o.Home, hs: newHolders(o.Home, "wire", o.HolderCommand),
-		client: o.Client, clientVersion: o.ClientVersion, cursor: cursor, log: log, handles: map[*heldWire]struct{}{},
+		client: o.Client, clientVersion: o.ClientVersion, cursor: cursor, log: log,
 	}
 	for h := range o.Drivers {
 		b.inproc[h] = true
@@ -159,16 +151,7 @@ func (b *wireBackend) Recover(ctx context.Context) ([]Handle, error) {
 // Close detaches from each holder, and closes the sessions in the visor
 // process.
 func (b *wireBackend) Close(ctx context.Context) error {
-	b.mu.Lock()
-	hs := make([]*heldWire, 0, len(b.handles))
-	for h := range b.handles {
-		hs = append(hs, h)
-	}
-	b.mu.Unlock()
-	for _, h := range hs {
-		h.detach()
-	}
-	b.wg.Wait()
+	b.handles.detachAll()
 	return b.rt.Close(ctx)
 }
 
@@ -272,21 +255,12 @@ func (b *wireBackend) reach(ctx context.Context, id string, cur holder.Cursor) (
 func (b *wireBackend) track(id, vendor string, c *holder.Client, cur holder.Cursor) *heldWire {
 	h := &heldWire{
 		b: b, id: id, vendor: vendor, last: cur, events: make(chan Event, 64),
-		stop: make(chan struct{}), done: make(chan struct{}), calls: map[uint64]chan holder.Reply{},
+		holderConn: newHolderConn(nil), calls: map[uint64]chan holder.Reply{},
 	}
 	h.connected(c)
-	b.mu.Lock()
-	b.handles[h] = struct{}{}
-	b.mu.Unlock()
-	b.wg.Add(1)
+	b.handles.add(h)
 	go h.pump()
 	return h
-}
-
-func (b *wireBackend) untrack(h *heldWire) {
-	b.mu.Lock()
-	delete(b.handles, h)
-	b.mu.Unlock()
 }
 
 func (h *wireHandle) Session() string { return h.id }
@@ -418,8 +392,7 @@ func (h *heldWire) release() {
 // pump reads the holder until it ends or the visor detaches. Then it sends
 // the events of the spool that the visor did not store.
 func (h *heldWire) pump() {
-	defer h.b.wg.Done()
-	defer h.b.untrack(h)
+	defer h.b.handles.remove(h)
 	defer close(h.done)
 	defer close(h.events)
 	c := h.client()
@@ -587,32 +560,6 @@ func (h *heldWire) dropCall(id uint64) {
 	h.mu.Lock()
 	delete(h.calls, id)
 	h.mu.Unlock()
-}
-
-// detach closes the connection. The holder keeps running.
-func (h *heldWire) detach() {
-	h.once.Do(func() {
-		h.mu.Lock()
-		h.detached = true
-		c := h.c
-		h.mu.Unlock()
-		close(h.stop)
-		if c != nil {
-			_ = c.Close() // the pump ends on this close
-		}
-	})
-}
-
-func (h *heldWire) isDetached() bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.detached
-}
-
-func (h *heldWire) client() *holder.Client {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.c
 }
 
 func (in Input) wire() agentwire.Prompt {

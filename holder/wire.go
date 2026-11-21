@@ -59,14 +59,12 @@ type Spool struct {
 // wireServer is one running wire holder. It keeps each event until a client
 // acks it, so a new client gets the events that the last one did not store.
 type wireServer struct {
+	acceptor
 	cfg   Config
-	log   *slog.Logger
-	ln    net.Listener
 	rt    *agentwire.Runtime
 	sess  agentwire.Session
 	run   string
 	start time.Time
-	wg    sync.WaitGroup
 	// acked signals a new ack.
 	acked chan struct{}
 	// callDone signals that a call replied.
@@ -123,8 +121,9 @@ func ReadSpool(path string) (Spool, error) {
 // session ends.
 func runWire(ctx context.Context, c Config) error {
 	s := &wireServer{
-		cfg: c, log: cmp.Or(c.Logger, slog.Default()).With("source", "holder", "session_id", c.ID, "mode", ModeWire),
-		run: newRun(), start: time.Now().UTC(), acked: make(chan struct{}, 1), callDone: make(chan struct{}, 1),
+		acceptor: acceptor{log: cmp.Or(c.Logger, slog.Default()).With("source", "holder", "session_id", c.ID, "mode", ModeWire), socket: c.Socket},
+		cfg:      c,
+		run:      newRun(), start: time.Now().UTC(), acked: make(chan struct{}, 1), callDone: make(chan struct{}, 1),
 	}
 	w := c.Wire
 	s.rt = agentwire.New(agentwire.Options{
@@ -148,7 +147,7 @@ func runWire(ctx context.Context, c Config) error {
 	}
 	defer s.removeSocket()
 	s.wg.Add(1)
-	go s.acceptLoop()
+	go s.acceptLoop(s.serve)
 	stop := make(chan struct{})
 	go func() {
 		select {
@@ -262,18 +261,6 @@ func (s *wireServer) closeSession(idle bool) {
 	}
 }
 
-func (s *wireServer) acceptLoop() {
-	defer s.wg.Done()
-	for {
-		conn, err := s.ln.Accept()
-		if err != nil {
-			return
-		}
-		s.wg.Add(1)
-		go s.serve(conn)
-	}
-}
-
 // serve exchanges the hellos, sends the events after the ack of the client,
 // and reads its acks and calls.
 func (s *wireServer) serve(conn net.Conn) {
@@ -315,31 +302,14 @@ func (s *wireServer) serve(conn net.Conn) {
 }
 
 func (s *wireServer) join(conn net.Conn) (*peer, error) {
-	if err := conn.SetDeadline(time.Now().Add(helloTimeout)); err != nil {
-		return nil, err
-	}
 	s.mu.Lock()
 	h := Hello{
 		Protocol: Protocol, Mode: ModeWire, ID: s.cfg.ID, PID: os.Getpid(), ChildPID: s.sess.PID(), StartedAt: s.start,
 		Run: s.run, VendorID: s.vendor, Status: s.status, Pending: slices.Clone(s.pending),
 	}
 	s.mu.Unlock()
-	data, err := json.Marshal(h)
+	their, err := exchangeHello(conn, h)
 	if err != nil {
-		return nil, err
-	}
-	if err := writeMsg(conn, MsgHello, data); err != nil {
-		return nil, err
-	}
-	t, data, err := readMsg(conn)
-	if err != nil {
-		return nil, err
-	}
-	var their Hello
-	if t != MsgHello || json.Unmarshal(data, &their) != nil || their.Protocol != Protocol {
-		return nil, ErrProtocol
-	}
-	if err := conn.SetDeadline(time.Time{}); err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
@@ -587,12 +557,6 @@ func (s *wireServer) dropLocked(p *peer) {
 	s.peer = nil
 	close(p.out)
 	_ = p.conn.SetReadDeadline(time.Now()) // stops the read loop of the peer
-}
-
-func (s *wireServer) removeSocket() {
-	if err := os.Remove(s.cfg.Socket); err != nil && !errors.Is(err, os.ErrNotExist) {
-		s.log.Warn("remove the socket", "err", err)
-	}
 }
 
 // writeJSON writes v to path with mode 0600.

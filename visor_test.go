@@ -491,6 +491,69 @@ func TestStateMoves(t *testing.T) {
 	}
 }
 
+type fakeDiscoverer struct{}
+
+func (fakeDiscoverer) Found() <-chan Found { return nil }
+
+func (fakeDiscoverer) Adopt(_ context.Context, s Session, _ string) (Handle, error) {
+	return &captureHandle{id: s.ID, ch: make(chan Event)}, nil
+}
+
+func TestAdoptEmitsStarting(t *testing.T) {
+	t.Parallel()
+	v := newTestVisor(t, t.TempDir(), scriptFlood, nil)
+	defer v.Close(context.Background())
+	st, err := v.Events(t.Context(), Filter{}, v.events.head())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	f := Found{Key: "k1", Dir: t.TempDir(), Harness: "fake", Title: "found"}
+	if err := v.adopt(t.Context(), kindCapture, fakeDiscoverer{}, f); err != nil {
+		t.Fatal(err)
+	}
+	list, err := v.Sessions(t.Context(), Filter{Kind: kindCapture})
+	if err != nil || len(list) != 1 || list[0].Title != "found" {
+		t.Fatalf("sessions %+v, %v", list, err)
+	}
+	e := collect(t, st, func(e Event) bool { return e.Type == EventSessionState })[0]
+	if e.Session != list[0].ID || e.State != StateStarting {
+		t.Fatalf("event %+v", e)
+	}
+	if err := v.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.add(t.Context(), &record{s: Session{ID: "late"}}); !errors.Is(err, ErrClosed) {
+		t.Fatalf("add on a closed visor: %v", err)
+	}
+}
+
+func TestNewestLocked(t *testing.T) {
+	t.Parallel()
+	v := newTestVisor(t, t.TempDir(), scriptFlood, nil)
+	defer v.Close(context.Background())
+	now := time.Now()
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	for id, s := range map[string]Session{
+		"old":    {Labels: map[string]string{"a": "1"}, CreatedAt: now.Add(-3 * time.Hour)},
+		"mid":    {Labels: map[string]string{"a": "1"}, CreatedAt: now.Add(-2 * time.Hour)},
+		"gone":   {Labels: map[string]string{"a": "1"}, CreatedAt: now, State: StateExited},
+		"nolbl":  {CreatedAt: now.Add(-time.Hour)},
+		"newest": {Labels: map[string]string{"a": "1"}, CreatedAt: now.Add(-time.Hour)},
+	} {
+		s.ID = id
+		v.sessions[id] = &record{s: s}
+	}
+	rec := v.newestLocked(func(s *Session) bool { return s.Labels["a"] == "1" })
+	if rec == nil || rec.s.ID != "newest" {
+		t.Fatalf("newest: %+v", rec)
+	}
+	if rec := v.newestLocked(func(*Session) bool { return false }); rec != nil {
+		t.Fatalf("no match gave %+v", rec)
+	}
+}
+
 // userEvents returns the user events of a session up to its head.
 func userEvents(t *testing.T, v api, id string) []Event {
 	t.Helper()

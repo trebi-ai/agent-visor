@@ -404,6 +404,48 @@ func TestPlainText(t *testing.T) {
 	}
 }
 
+type fakeDetach struct {
+	set  *handleSet[*fakeDetach]
+	done chan struct{}
+}
+
+func (f *fakeDetach) detach() { go func() { f.set.remove(f); close(f.done) }() }
+
+func TestHandleSetDetachAll(t *testing.T) {
+	t.Parallel()
+	var set handleSet[*fakeDetach]
+	a := &fakeDetach{set: &set, done: make(chan struct{})}
+	b := &fakeDetach{set: &set, done: make(chan struct{})}
+	set.add(a)
+	set.add(b)
+	set.detachAll()
+	for _, f := range []*fakeDetach{a, b} {
+		select {
+		case <-f.done:
+		default:
+			t.Fatal("detachAll returned before a remove")
+		}
+	}
+	if len(set.m) != 0 {
+		t.Fatalf("%d handles stay", len(set.m))
+	}
+}
+
+func TestHolderConnDetachOnce(t *testing.T) {
+	t.Parallel()
+	c := newHolderConn(nil)
+	c.detach()
+	c.detach()
+	select {
+	case <-c.stop:
+	default:
+		t.Fatal("stop is open")
+	}
+	if !c.isDetached() || c.client() != nil {
+		t.Fatal("conn state after detach")
+	}
+}
+
 func runTestHolder(id string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()

@@ -195,19 +195,54 @@ func TestPTYSnapshotAfterWrap(t *testing.T) {
 		Command: []string{"sh", "-c", `yes 0123456789abcdef | head -c 614400; echo END; read -r l`},
 	}
 	go func() { _ = Run(t.Context(), cfg) }() //nolint:errcheck // the test ends the holder with its context
-	c := dial(t, cfg.Socket)
-	defer c.Close()
-	var out bytes.Buffer
-	readUntil(t, c, &out, func(Msg) bool { return bytes.HasSuffix(out.Bytes(), []byte("END\r\n")) })
-	if out.Len() < DefaultRing {
-		t.Fatalf("output %d bytes", out.Len())
-	}
-	second := dial(t, cfg.Socket)
-	defer second.Close()
+	raw := bytes.Repeat([]byte("0123456789abcdef\n"), 614400/17+1)[:614400]
+	all := append(bytes.ReplaceAll(raw, []byte("\n"), []byte("\r\n")), "END\r\n"...)
+	want := all[len(all)-DefaultRing:]
+	// A client that dials after the output gets one snapshot.
 	var snap bytes.Buffer
-	readUntil(t, second, &snap, func(m Msg) bool { return m.Type == MsgSnapshot })
-	if want := out.Bytes()[out.Len()-DefaultRing:]; !bytes.Equal(snap.Bytes(), want) {
-		t.Fatalf("snapshot of %d bytes differs from the last %d bytes of the output", snap.Len(), DefaultRing)
+	for deadline := time.Now().Add(10 * time.Second); !bytes.Equal(snap.Bytes(), want); time.Sleep(50 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("snapshot of %d bytes differs from the last %d bytes of the output", snap.Len(), DefaultRing)
+		}
+		snap.Reset()
+		c := dial(t, cfg.Socket)
+		readUntil(t, c, &snap, func(m Msg) bool { return m.Type == MsgSnapshot })
+		c.Close()
+	}
+}
+
+func TestExchangeHello(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		reply func(net.Conn)
+		ok    bool
+	}{
+		"same version": {func(c net.Conn) {
+			data, _ := json.Marshal(Hello{Protocol: Protocol, ID: "x"})
+			_ = writeMsg(c, MsgHello, data)
+		}, true}, //nolint:errchkjson,errcheck // a test peer
+		"version 1":   {func(c net.Conn) { data, _ := json.Marshal(Hello{Protocol: 1}); _ = writeMsg(c, MsgHello, data) }, false}, //nolint:errchkjson,errcheck // a test peer
+		"not a hello": {func(c net.Conn) { _ = writeMsg(c, MsgOutput, []byte("x")) }, false},                                      //nolint:errcheck // a test peer
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			a, b := net.Pipe()
+			defer a.Close()
+			defer b.Close()
+			go func() {
+				if _, _, err := readMsg(b); err != nil {
+					return
+				}
+				tc.reply(b)
+			}()
+			got, err := exchangeHello(a, Hello{Protocol: Protocol, ID: "mine"})
+			switch {
+			case tc.ok && (err != nil || got.ID != "x"):
+				t.Fatalf("hello %+v, %v", got, err)
+			case !tc.ok && !errors.Is(err, ErrProtocol):
+				t.Fatalf("error %v, want ErrProtocol", err)
+			}
+		})
 	}
 }
 

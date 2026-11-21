@@ -55,7 +55,7 @@ func (m *Manager) Update(ctx context.Context, name, version string) (Harness, er
 	if !m.known(name) {
 		return Harness{}, fmt.Errorf("harness %s: %w", name, ErrNotFound)
 	}
-	if b := m.base(name); b != name {
+	if b := m.Base(name); b != name {
 		return Harness{}, fmt.Errorf("%w: %s is a variant; update %s", ErrUnsupported, name, b)
 	}
 	version = strings.TrimPrefix(version, "v")
@@ -78,7 +78,7 @@ func (m *Manager) SetUpdates(ctx context.Context, name string, mode UpdateMode, 
 	if !m.known(name) {
 		return Harness{}, fmt.Errorf("harness %s: %w", name, ErrNotFound)
 	}
-	if b := m.base(name); b != name {
+	if b := m.Base(name); b != name {
 		return Harness{}, fmt.Errorf("%w: %s is a variant; update %s", ErrUnsupported, name, b)
 	}
 	version = strings.TrimPrefix(version, "v")

@@ -518,7 +518,7 @@ func (m *Manager) shares(name string, f agentwire.HomeFile, st state) bool {
 	if v, ok := m.o.Policy.Share[name][f.Key]; ok {
 		return v
 	}
-	if v, ok := m.o.Policy.Share[m.base(name)][f.Key]; ok {
+	if v, ok := m.o.Policy.Share[m.Base(name)][f.Key]; ok {
 		return v
 	}
 	return f.Share

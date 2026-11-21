@@ -84,17 +84,9 @@ func (v *Visor) adopt(ctx context.Context, kind Kind, d Discoverer, f Found) err
 			Title: f.Title, WorkingDir: f.Dir, State: StateStarting, Labels: maps.Clone(f.Labels),
 			Restart: RestartPolicy{Mode: RestartNotify}, CreatedAt: now, UpdatedAt: now,
 		}}
-		v.mu.Lock()
-		if v.closed {
-			v.mu.Unlock()
-			return ErrClosed
-		}
-		v.sessions[rec.s.ID] = rec
-		v.mu.Unlock()
-		if err := v.save(ctx, rec); err != nil {
+		if err := v.add(ctx, rec); err != nil {
 			return err
 		}
-		v.emit(ctx, rec, Event{Type: EventSessionState, State: StateStarting})
 	}
 	v.mu.Lock()
 	s := rec.s.clone()
@@ -118,13 +110,7 @@ func (v *Visor) adopt(ctx context.Context, kind Kind, d Discoverer, f Found) err
 func (v *Visor) observedWithin(labels map[string]string) *record {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	var out *record
-	for _, rec := range v.sessions {
-		s := rec.s
-		if s.Kind == KindObserved && s.State != StateExited && len(s.Labels) > 0 && matchLabels(s.Labels, labels) &&
-			(out == nil || s.CreatedAt.After(out.s.CreatedAt)) {
-			out = rec
-		}
-	}
-	return out
+	return v.newestLocked(func(s *Session) bool {
+		return s.Kind == KindObserved && len(s.Labels) > 0 && matchLabels(s.Labels, labels)
+	})
 }

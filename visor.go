@@ -1012,6 +1012,19 @@ func (v *Visor) add(ctx context.Context, rec *record) error {
 	return nil
 }
 
+// newestLocked gives the newest session that has not exited and matches. The
+// caller holds v.mu.
+func (v *Visor) newestLocked(match func(*Session) bool) *record {
+	var out *record
+	for _, rec := range v.sessions {
+		s := &rec.s
+		if s.State != StateExited && match(s) && (out == nil || s.CreatedAt.After(out.s.CreatedAt)) {
+			out = rec
+		}
+	}
+	return out
+}
+
 // sweepLoop forgets old exited sessions and removes old fragment files,
 // now and then each hour.
 func (v *Visor) sweepLoop() {

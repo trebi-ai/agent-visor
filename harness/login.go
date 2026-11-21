@@ -521,7 +521,7 @@ func (m *Manager) binary(ctx context.Context, name string) (string, error) {
 // detect probes the system install of the harness. Facts.Binary gives the
 // path when agent-wire finds none.
 func (m *Manager) detect(ctx context.Context, name string) (agentwire.Detection, error) {
-	name = m.base(name)
+	name = m.Base(name)
 	h := m.kind(name)
 	d, err := m.wire.Detect(ctx, h)
 	if err != nil {

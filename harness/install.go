@@ -33,7 +33,7 @@ func (m *Manager) Install(ctx context.Context, name, version string) (Harness, e
 	if !m.known(name) {
 		return Harness{}, fmt.Errorf("harness %s: %w", name, ErrNotFound)
 	}
-	if b := m.base(name); b != name {
+	if b := m.Base(name); b != name {
 		return Harness{}, fmt.Errorf("%w: %s is a variant; install %s", ErrUnsupported, name, b)
 	}
 	version = strings.TrimPrefix(version, "v")
@@ -297,7 +297,7 @@ func (m *Manager) switchTo(name, version string) error {
 
 // current gives the version and the binary of the visor copy.
 func (m *Manager) current(name string) (string, string, bool) {
-	name = m.base(name)
+	name = m.Base(name)
 	v, err := os.Readlink(filepath.Join(m.binDir(name), currentLink))
 	if err != nil {
 		return "", "", false
@@ -314,7 +314,7 @@ func (m *Manager) current(name string) (string, string, bool) {
 
 // installs lists the visor installs, oldest first.
 func (m *Manager) installs(name string) []string {
-	name = m.base(name)
+	name = m.Base(name)
 	entries, err := os.ReadDir(m.binDir(name))
 	if err != nil {
 		return nil

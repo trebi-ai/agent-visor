@@ -65,9 +65,9 @@ type Handle interface {
 	Events() <-chan Event
 }
 
-// TextTerminal is a handle whose terminal the backend shows only as text,
-// for example a terminal in another app. Screen, Keys, Paste, and Output use
-// it.
+// TextTerminal is a handle that gives its terminal as text. The PTY handle
+// and a terminal in another app implement it. Screen, Keys, Paste, and Output
+// use it.
 type TextTerminal interface {
 	Screen(ctx context.Context) (Screen, error)
 	Keys(ctx context.Context, data []byte) error

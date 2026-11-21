@@ -210,7 +210,7 @@ func wireConfig(t *testing.T, id string) Config {
 }
 
 func newCallServer() *wireServer {
-	return &wireServer{log: slog.New(slog.DiscardHandler), callDone: make(chan struct{}, 1)}
+	return &wireServer{acceptor: acceptor{log: slog.New(slog.DiscardHandler)}, callDone: make(chan struct{}, 1)}
 }
 
 func finishCall(s *wireServer) {

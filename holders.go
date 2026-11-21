@@ -12,10 +12,96 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/trebi-ai/agent-visor/holder"
 )
+
+// holderConn is the connection of a handle to its holder. stop closes on
+// detach; done closes when the pump ends. mu guards c, detached, and the
+// fields of the handle that embeds it.
+type holderConn struct {
+	stop chan struct{}
+	done chan struct{}
+	once sync.Once
+
+	mu       sync.Mutex
+	c        *holder.Client
+	detached bool
+}
+
+func newHolderConn(c *holder.Client) holderConn {
+	return holderConn{stop: make(chan struct{}), done: make(chan struct{}), c: c}
+}
+
+// detach closes the connection. The holder keeps running.
+func (h *holderConn) detach() {
+	h.once.Do(func() {
+		h.mu.Lock()
+		h.detached = true
+		c := h.c
+		h.mu.Unlock()
+		close(h.stop)
+		if c != nil {
+			_ = c.Close() // the pump ends on this close
+		}
+	})
+}
+
+func (h *holderConn) isDetached() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.detached
+}
+
+func (h *holderConn) client() *holder.Client {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.c
+}
+
+// handleSet is the set of live handles of a backend. The pump of a handle
+// removes it when the pump ends.
+type handleSet[H interface {
+	comparable
+	detach()
+}] struct {
+	mu sync.Mutex
+	m  map[H]struct{}
+	wg sync.WaitGroup
+}
+
+func (s *handleSet[H]) add(h H) {
+	s.mu.Lock()
+	if s.m == nil {
+		s.m = map[H]struct{}{}
+	}
+	s.m[h] = struct{}{}
+	s.mu.Unlock()
+	s.wg.Add(1)
+}
+
+func (s *handleSet[H]) remove(h H) {
+	s.mu.Lock()
+	delete(s.m, h)
+	s.mu.Unlock()
+	s.wg.Done()
+}
+
+// detachAll detaches each handle and waits for the pumps to end.
+func (s *handleSet[H]) detachAll() {
+	s.mu.Lock()
+	hs := make([]H, 0, len(s.m))
+	for h := range s.m {
+		hs = append(hs, h)
+	}
+	s.mu.Unlock()
+	for _, h := range hs {
+		h.detach()
+	}
+	s.wg.Wait()
+}
 
 // holders starts holder processes and connects to them. Each backend has
 // its own folder of sockets, exit files, and spools. When the home path is

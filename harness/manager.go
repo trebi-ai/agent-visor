@@ -374,7 +374,7 @@ func (m *Manager) Harness(ctx context.Context, name string) (Harness, error) {
 	if err != nil {
 		return Harness{}, err
 	}
-	base := m.base(name)
+	base := m.Base(name)
 	ust, err := m.updateState(ctx, name, st)
 	if err != nil {
 		return Harness{}, err
@@ -476,7 +476,7 @@ func (m *Manager) Launch(ctx context.Context, name string) (Launch, error) {
 	if !m.known(name) {
 		return l, nil
 	}
-	m.waitUpdate(ctx, m.base(name))
+	m.waitUpdate(ctx, m.Base(name))
 	h := m.kind(name)
 	st, err := m.state(ctx, name)
 	if err != nil {
@@ -550,7 +550,15 @@ func (m *Manager) SetLimits(ctx context.Context, name string, l Limits) {
 
 // Base gives the name of the harness whose program and driver a name
 // runs: the base of a variant, else the name.
-func (m *Manager) Base(name string) string { return m.base(name) }
+func (m *Manager) Base(name string) string {
+	if slices.Contains(m.names, name) || m.o.Variants == nil {
+		return name
+	}
+	if b, ok := m.o.Variants()[name]; ok && slices.Contains(m.names, b) {
+		return b
+	}
+	return name
+}
 
 // Busy reports that a login, an install, or an update runs.
 func (m *Manager) Busy() bool {
@@ -603,22 +611,10 @@ func (m *Manager) canInstall(r agentwire.InstallRecipe) bool {
 	return false
 }
 
-func (m *Manager) known(name string) bool { return slices.Contains(m.names, m.base(name)) }
-
-// base gives the name of the harness whose program a name runs: the base of
-// a variant, else the name.
-func (m *Manager) base(name string) string {
-	if slices.Contains(m.names, name) || m.o.Variants == nil {
-		return name
-	}
-	if b, ok := m.o.Variants()[name]; ok && slices.Contains(m.names, b) {
-		return b
-	}
-	return name
-}
+func (m *Manager) known(name string) bool { return slices.Contains(m.names, m.Base(name)) }
 
 // kind gives the vendor harness of a name.
-func (m *Manager) kind(name string) agentwire.Harness { return agentwire.Harness(m.base(name)) }
+func (m *Manager) kind(name string) agentwire.Harness { return agentwire.Harness(m.Base(name)) }
 
 // variantNames lists the variants with a known base, sorted.
 func (m *Manager) variantNames() []string {
@@ -660,7 +656,7 @@ func (m *Manager) env(name string) (map[string]string, error) {
 // updateState gives the state that holds the updates of a harness: the
 // state of the base for a variant, else st.
 func (m *Manager) updateState(ctx context.Context, name string, st state) (state, error) {
-	if b := m.base(name); b != name {
+	if b := m.Base(name); b != name {
 		return m.state(ctx, b)
 	}
 	return st, nil

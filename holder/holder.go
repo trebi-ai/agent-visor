@@ -52,13 +52,11 @@ type Config struct {
 
 // server is one running holder.
 type server struct {
+	acceptor
 	cfg   Config
-	log   *slog.Logger
-	ln    net.Listener
 	ptmx  *os.File
 	cmd   *exec.Cmd
 	start time.Time
-	wg    sync.WaitGroup
 	// exited closes when the process ends.
 	exited chan struct{}
 	wmu    sync.Mutex // writes to the PTY
@@ -113,8 +111,9 @@ func Run(ctx context.Context, c Config) error {
 		return runWire(ctx, c)
 	}
 	s := &server{
-		cfg: c, log: cmp.Or(c.Logger, slog.Default()).With("source", "holder", "session_id", c.ID),
-		ring: NewRing(c.Ring), exited: make(chan struct{}), peers: map[*peer]struct{}{},
+		acceptor: acceptor{log: cmp.Or(c.Logger, slog.Default()).With("source", "holder", "session_id", c.ID), socket: c.Socket},
+		cfg:      c,
+		ring:     NewRing(c.Ring), exited: make(chan struct{}), peers: map[*peer]struct{}{},
 		size: Size{Cols: cmp.Or(c.Cols, defaultCols), Rows: cmp.Or(c.Rows, defaultRows)},
 	}
 	ln, err := listen(ctx, c.Socket)
@@ -130,7 +129,7 @@ func Run(ctx context.Context, c Config) error {
 	readDone := make(chan struct{})
 	go s.readLoop(readDone)
 	s.wg.Add(1)
-	go s.acceptLoop()
+	go s.acceptLoop(s.serve)
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -231,18 +230,6 @@ func (s *server) broadcast(msg []byte) {
 	}
 }
 
-func (s *server) acceptLoop() {
-	defer s.wg.Done()
-	for {
-		conn, err := s.ln.Accept()
-		if err != nil {
-			return
-		}
-		s.wg.Add(1)
-		go s.serve(conn)
-	}
-}
-
 // serve exchanges the hellos, sends the snapshot, and reads the messages of
 // one peer.
 func (s *server) serve(conn net.Conn) {
@@ -266,28 +253,10 @@ func (s *server) serve(conn net.Conn) {
 }
 
 func (s *server) join(conn net.Conn) (*peer, error) {
-	if err := conn.SetDeadline(time.Now().Add(helloTimeout)); err != nil {
-		return nil, err
-	}
 	s.mu.Lock()
 	h := Hello{Protocol: Protocol, Mode: ModePTY, ID: s.cfg.ID, PID: os.Getpid(), ChildPID: s.cmd.Process.Pid, Cols: s.size.Cols, Rows: s.size.Rows, StartedAt: s.start}
 	s.mu.Unlock()
-	data, err := json.Marshal(h)
-	if err != nil {
-		return nil, err
-	}
-	if err := writeMsg(conn, MsgHello, data); err != nil {
-		return nil, err
-	}
-	t, data, err := readMsg(conn)
-	if err != nil {
-		return nil, err
-	}
-	var their Hello
-	if t != MsgHello || json.Unmarshal(data, &their) != nil || their.Protocol != Protocol {
-		return nil, ErrProtocol
-	}
-	if err := conn.SetDeadline(time.Time{}); err != nil {
+	if _, err := exchangeHello(conn, h); err != nil {
 		return nil, err
 	}
 	p := &peer{conn: conn, out: make(chan []byte, peerQueue)}
@@ -450,10 +419,56 @@ func (s *server) dropLocked(p *peer) {
 	_ = p.conn.SetReadDeadline(time.Now()) // stops the read loop of the peer
 }
 
-func (s *server) removeSocket() {
-	if err := os.Remove(s.cfg.Socket); err != nil && !errors.Is(err, os.ErrNotExist) {
-		s.log.Warn("remove the socket", "err", err)
+// acceptor is the socket part that both holder servers share.
+type acceptor struct {
+	ln     net.Listener
+	wg     sync.WaitGroup
+	log    *slog.Logger
+	socket string
+}
+
+// acceptLoop serves each connection with serve until the listener closes.
+func (a *acceptor) acceptLoop(serve func(net.Conn)) {
+	defer a.wg.Done()
+	for {
+		conn, err := a.ln.Accept()
+		if err != nil {
+			return
+		}
+		a.wg.Add(1)
+		go serve(conn)
 	}
+}
+
+func (a *acceptor) removeSocket() {
+	if err := os.Remove(a.socket); err != nil && !errors.Is(err, os.ErrNotExist) {
+		a.log.Warn("remove the socket", "err", err)
+	}
+}
+
+// exchangeHello writes mine, reads the hello of the peer, and checks its
+// version. A wrong first message, a bad hello, or another version gives
+// ErrProtocol.
+func exchangeHello(conn net.Conn, mine Hello) (Hello, error) {
+	var their Hello
+	if err := conn.SetDeadline(time.Now().Add(helloTimeout)); err != nil {
+		return their, err
+	}
+	data, err := json.Marshal(mine)
+	if err != nil {
+		return their, err
+	}
+	if err := writeMsg(conn, MsgHello, data); err != nil {
+		return their, err
+	}
+	t, data, err := readMsg(conn)
+	if err != nil {
+		return their, err
+	}
+	if t != MsgHello || json.Unmarshal(data, &their) != nil || their.Protocol != Protocol {
+		return their, ErrProtocol
+	}
+	return their, conn.SetDeadline(time.Time{})
 }
 
 // listen serves a socket with mode 0600 at path.

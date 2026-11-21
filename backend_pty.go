@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/hinshun/vt10x"
@@ -35,9 +34,7 @@ type ptyBackend struct {
 	termCmd TerminalCommand
 	log     *slog.Logger
 
-	mu      sync.Mutex
-	handles map[*ptyHandle]struct{}
-	wg      sync.WaitGroup
+	handles handleSet[*ptyHandle]
 }
 
 // ptyHandle is the connection of the visor to one holder. It keeps a copy
@@ -47,20 +44,14 @@ type ptyHandle struct {
 	id     string
 	vendor string
 	events chan Event
-	// stop closes on detach; done closes when the pump ends.
-	stop chan struct{}
-	done chan struct{}
-	once sync.Once
+	holderConn
 
-	mu       sync.Mutex
-	c        *holder.Client
-	pid      int
-	size     holder.Size
-	ring     holder.Ring
-	subs     map[*AttachStream]struct{}
-	lease    *AttachStream
-	detached bool
-	ended    bool
+	pid   int
+	size  holder.Size
+	ring  holder.Ring
+	subs  map[*AttachStream]struct{}
+	lease *AttachStream
+	ended bool
 	// vt renders the output for Screen. It is lazy: pending is the output
 	// that it did not read, and stale means that it must read the ring
 	// again. answers holds its replies to terminal queries; they go to the
@@ -75,8 +66,9 @@ type ptyHandle struct {
 }
 
 var (
-	_ Backend = (*ptyBackend)(nil)
-	_ Handle  = (*ptyHandle)(nil)
+	_ Backend      = (*ptyBackend)(nil)
+	_ Handle       = (*ptyHandle)(nil)
+	_ TextTerminal = (*ptyHandle)(nil)
 
 	// dsrQuery is a status query that the emulator answers.
 	dsrQuery = regexp.MustCompile(`\x1b\[[0-9;?]*n`)
@@ -93,7 +85,7 @@ const (
 )
 
 func newPTYBackend(home string, holderCmd []string, termCmd TerminalCommand, log *slog.Logger) *ptyBackend {
-	return &ptyBackend{home: home, hs: newHolders(home, "holders", holderCmd), termCmd: termCmd, log: log, handles: map[*ptyHandle]struct{}{}}
+	return &ptyBackend{home: home, hs: newHolders(home, "holders", holderCmd), termCmd: termCmd, log: log}
 }
 
 func (b *ptyBackend) Kind() Kind { return KindPTY }
@@ -161,16 +153,7 @@ func (b *ptyBackend) Recover(ctx context.Context) ([]Handle, error) {
 // Close detaches from each holder. The holders and their processes keep
 // running.
 func (b *ptyBackend) Close(context.Context) error {
-	b.mu.Lock()
-	hs := make([]*ptyHandle, 0, len(b.handles))
-	for h := range b.handles {
-		hs = append(hs, h)
-	}
-	b.mu.Unlock()
-	for _, h := range hs {
-		h.detach()
-	}
-	b.wg.Wait()
+	b.handles.detachAll()
 	return nil
 }
 
@@ -208,8 +191,8 @@ func (b *ptyBackend) command(l Launch, env []string) ([]string, error) {
 // first snapshot; a recovered one does not, because they are old.
 func (b *ptyBackend) track(id, vendor string, c *holder.Client, fresh bool) *ptyHandle {
 	h := &ptyHandle{
-		b: b, id: id, vendor: vendor, c: c, fresh: fresh, events: make(chan Event, 8),
-		stop: make(chan struct{}), done: make(chan struct{}), subs: map[*AttachStream]struct{}{},
+		b: b, id: id, vendor: vendor, holderConn: newHolderConn(c), fresh: fresh, events: make(chan Event, 8),
+		subs: map[*AttachStream]struct{}{},
 	}
 	if c != nil {
 		hello := c.Hello()
@@ -217,18 +200,9 @@ func (b *ptyBackend) track(id, vendor string, c *holder.Client, fresh bool) *pty
 	}
 	h.vt = h.newVT()
 	h.stale = true
-	b.mu.Lock()
-	b.handles[h] = struct{}{}
-	b.mu.Unlock()
-	b.wg.Add(1)
+	b.handles.add(h)
 	go h.pump()
 	return h
-}
-
-func (b *ptyBackend) untrack(h *ptyHandle) {
-	b.mu.Lock()
-	delete(b.handles, h)
-	b.mu.Unlock()
 }
 
 // logTail gives the end of the output log of a session, one ring long.
@@ -291,10 +265,18 @@ func (h *ptyHandle) Close(ctx context.Context) error {
 
 func (h *ptyHandle) Events() <-chan Event { return h.events }
 
+// Screen, Keys, Paste, and Output make the handle a TextTerminal.
+func (h *ptyHandle) Screen(context.Context) (Screen, error) { return h.screen(), nil }
+
+func (h *ptyHandle) Keys(_ context.Context, data []byte) error { return h.write(data) }
+
+func (h *ptyHandle) Paste(_ context.Context, text string) error { return h.write(h.pasteData(text)) }
+
+func (h *ptyHandle) Output(context.Context) (string, error) { return plainText(h.tail()), nil }
+
 // pump reads the holder until the process ends or the visor detaches.
 func (h *ptyHandle) pump() {
-	defer h.b.wg.Done()
-	defer h.b.untrack(h)
+	defer h.b.handles.remove(h)
 	defer close(h.done)
 	defer close(h.events)
 	c := h.client()
@@ -379,32 +361,6 @@ func (h *ptyHandle) finish(code *int) {
 	}
 	h.mu.Unlock()
 	h.endAll(EndExited)
-}
-
-// detach closes the connection. The holder keeps running.
-func (h *ptyHandle) detach() {
-	h.once.Do(func() {
-		h.mu.Lock()
-		h.detached = true
-		c := h.c
-		h.mu.Unlock()
-		close(h.stop)
-		if c != nil {
-			_ = c.Close() // the pump ends on this close
-		}
-	})
-}
-
-func (h *ptyHandle) isDetached() bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.detached
-}
-
-func (h *ptyHandle) client() *holder.Client {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.c
 }
 
 func (h *ptyHandle) write(p []byte) error {
