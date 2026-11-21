@@ -194,38 +194,6 @@ func TestWaitCallsDeadline(t *testing.T) {
 	}
 }
 
-func dialFrom(t *testing.T, path string, from Cursor) *Client {
-	t.Helper()
-	c, err := Dial(t.Context(), path, from)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return c
-}
-
-func wireConfig(t *testing.T, id string) Config {
-	t.Helper()
-	dir := shortDir(t)
-	return Config{
-		ID: id, Mode: ModeWire, Socket: filepath.Join(dir, "w.sock"), ExitFile: filepath.Join(dir, "w.exit"), Spool: filepath.Join(dir, "w.spool"),
-		Wire: &WireConfig{StartRequest: agentwire.StartRequest{Harness: "fake", WorkingDir: dir}, Drivers: map[string]agentwire.Driver{"fake": agentwire.FakeDriver{Script: wireTurns}}},
-	}
-}
-
-func newCallServer() *wireServer {
-	return &wireServer{acceptor: acceptor{log: slog.New(slog.DiscardHandler)}, callDone: make(chan struct{}, 1)}
-}
-
-func finishCall(s *wireServer) {
-	s.mu.Lock()
-	s.calls--
-	s.mu.Unlock()
-	select {
-	case s.callDone <- struct{}{}:
-	default:
-	}
-}
-
 func TestWireConfigJSON(t *testing.T) {
 	t.Parallel()
 	in := WireConfig{
@@ -304,5 +272,37 @@ func TestWireResumeSetsSessionID(t *testing.T) {
 		if d.call != tc.call || d.req.SessionID != tc.id {
 			t.Fatalf("resume=%v: call %q, session id %q", tc.resume, d.call, d.req.SessionID)
 		}
+	}
+}
+
+func dialFrom(t *testing.T, path string, from Cursor) *Client {
+	t.Helper()
+	c, err := Dial(t.Context(), path, from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func wireConfig(t *testing.T, id string) Config {
+	t.Helper()
+	dir := shortDir(t)
+	return Config{
+		ID: id, Mode: ModeWire, Socket: filepath.Join(dir, "w.sock"), ExitFile: filepath.Join(dir, "w.exit"), Spool: filepath.Join(dir, "w.spool"),
+		Wire: &WireConfig{StartRequest: agentwire.StartRequest{Harness: "fake", WorkingDir: dir}, Drivers: map[string]agentwire.Driver{"fake": agentwire.FakeDriver{Script: wireTurns}}},
+	}
+}
+
+func newCallServer() *wireServer {
+	return &wireServer{acceptor: acceptor{log: slog.New(slog.DiscardHandler)}, callDone: make(chan struct{}, 1)}
+}
+
+func finishCall(s *wireServer) {
+	s.mu.Lock()
+	s.calls--
+	s.mu.Unlock()
+	select {
+	case s.callDone <- struct{}{}:
+	default:
 	}
 }

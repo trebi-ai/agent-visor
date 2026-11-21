@@ -228,6 +228,19 @@ func TestVendorPaths(t *testing.T) {
 	}
 }
 
+func TestNamesFromAgentWire(t *testing.T) {
+	t.Parallel()
+	if got := Names(); !slices.Equal(got, []string{"claude", "codex"}) {
+		t.Fatalf("names: %v", got)
+	}
+	if Supported("opencode") {
+		t.Fatal("opencode has no hook support")
+	}
+	if _, err := lookup("opencode"); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("lookup: %v", err)
+	}
+}
+
 func newTestInstaller(t *testing.T, tag string) *Installer {
 	t.Helper()
 	i, err := NewInstaller(tag, []string{testExe, "visor", "hook"})
@@ -269,17 +282,4 @@ func home(t *testing.T, files map[string]string) string {
 		}
 	}
 	return dir
-}
-
-func TestNamesFromAgentWire(t *testing.T) {
-	t.Parallel()
-	if got := Names(); !slices.Equal(got, []string{"claude", "codex"}) {
-		t.Fatalf("names: %v", got)
-	}
-	if Supported("opencode") {
-		t.Fatal("opencode has no hook support")
-	}
-	if _, err := lookup("opencode"); !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("lookup: %v", err)
-	}
 }
