@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.7.0 (unreleased)
+
+- Removed (breaking): the holder protocol version 1 and `holder.MinProtocol`. `holder.Dial` and both holders speak only version 2. No tagged release made a version 1 holder. A version 1 holder that still runs is not recovered: its session becomes lost or suspended, and the holder runs until its process ends.
+
 ## v0.6.1 (2026-11-14)
 
 - Accept a sha512 digest for a download (`sha512:<hex>`), next to sha256. agent-wire v0.14.0 installs Codex and OpenCode from the npm registry, which gives sha512. The GitHub API allowed only 60 calls per hour for each address with no token.

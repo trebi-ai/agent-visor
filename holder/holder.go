@@ -288,7 +288,7 @@ func (s *server) join(conn net.Conn) (*peer, error) {
 		return nil, err
 	}
 	var their Hello
-	if t != MsgHello || json.Unmarshal(data, &their) != nil || their.Protocol < MinProtocol || their.Protocol > Protocol {
+	if t != MsgHello || json.Unmarshal(data, &their) != nil || their.Protocol != Protocol {
 		return nil, ErrProtocol
 	}
 	if err := conn.SetDeadline(time.Time{}); err != nil {

@@ -114,13 +114,9 @@ type Client struct {
 	wmu   sync.Mutex
 }
 
-// Protocol is the version of the holder protocol of this build. Version 2
-// adds the wire mode. MinProtocol is the oldest holder that a client speaks
-// to.
-const (
-	Protocol    = 2
-	MinProtocol = 1
-)
+// Protocol is the version of the holder protocol of this build. A client and
+// a holder speak only the same version.
+const Protocol = 2
 
 // Modes.
 const (
@@ -265,10 +261,10 @@ func (c *Client) handshake(from Cursor) error {
 	if err := json.Unmarshal(p, &c.hello); err != nil {
 		return fmt.Errorf("decode holder hello: %w", err)
 	}
-	if c.hello.Protocol < MinProtocol || c.hello.Protocol > Protocol {
+	if c.hello.Protocol != Protocol {
 		return fmt.Errorf("%w: holder protocol %d", ErrProtocol, c.hello.Protocol)
 	}
-	mine := Hello{Protocol: c.hello.Protocol}
+	mine := Hello{Protocol: Protocol}
 	if from.Run != "" && from.Run == c.hello.Run {
 		mine.After = from.Seq
 	}

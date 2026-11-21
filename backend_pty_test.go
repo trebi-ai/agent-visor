@@ -3,9 +3,13 @@ package agentvisor
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -301,6 +305,40 @@ func TestPTYExitWhileVisorDown(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, "holders", s.ID+".exit")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("the exit file stays: %v", err)
+	}
+}
+
+// TestRecoverKeepsSocketOnProtocolError checks that Recover skips a holder
+// of another protocol version and does not remove its socket.
+func TestRecoverKeepsSocketOnProtocolError(t *testing.T) {
+	t.Parallel()
+	home := shortHome(t)
+	b := newPTYBackend(home, nil, nil, slog.New(slog.DiscardHandler))
+	if err := b.hs.ensureDirs(); err != nil {
+		t.Fatal(err)
+	}
+	sock := b.hs.socket("ses_old")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		data, _ := json.Marshal(holder.Hello{Protocol: 1}) //nolint:errchkjson // a plain struct
+		frame := binary.BigEndian.AppendUint32([]byte{byte(holder.MsgHello)}, uint32(len(data)))
+		_, _ = conn.Write(append(frame, data...)) // Recover checks the result
+	}()
+	hs, err := b.Recover(t.Context())
+	if err != nil || len(hs) != 0 {
+		t.Fatalf("recover: %v %v", hs, err)
+	}
+	if _, err := os.Stat(sock); err != nil {
+		t.Fatalf("the socket is gone: %v", err)
 	}
 }
 

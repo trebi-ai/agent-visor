@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,6 +118,72 @@ func TestConfig(t *testing.T) {
 		if err := Run(t.Context(), c); err == nil {
 			t.Errorf("%s: no error", name)
 		}
+	}
+}
+
+// TestDialRefusesOtherProtocol checks that a client refuses a holder of
+// another protocol version.
+func TestDialRefusesOtherProtocol(t *testing.T) {
+	t.Parallel()
+	for _, version := range []int{1, 3} {
+		path := filepath.Join(shortDir(t), "h.sock")
+		ln, err := (&net.ListenConfig{}).Listen(t.Context(), "unix", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ln.Close()
+		go func() {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+			data, _ := json.Marshal(Hello{Protocol: version}) //nolint:errchkjson // a plain struct
+			_ = writeMsg(conn, MsgHello, data)                // the client checks the result
+		}()
+		if _, err := Dial(t.Context(), path, Cursor{}); !errors.Is(err, ErrProtocol) {
+			t.Errorf("protocol %d: %v", version, err)
+		}
+	}
+}
+
+// TestPTYHolderRefusesOldPeer checks that a PTY holder closes the
+// connection of a peer with another protocol version.
+func TestPTYHolderRefusesOldPeer(t *testing.T) {
+	t.Parallel()
+	dir := shortDir(t)
+	cfg := Config{ID: "s3", Socket: filepath.Join(dir, "h.sock"), Command: []string{"sh", "-c", "sleep 30"}}
+	errc := make(chan error, 1)
+	go func() { errc <- Run(t.Context(), cfg) }()
+	good := dial(t, cfg.Socket)
+	defer good.Close()
+
+	conn, err := (&net.Dialer{}).DialContext(t.Context(), "unix", cfg.Socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if typ, _, err := readMsg(conn); err != nil || typ != MsgHello {
+		t.Fatalf("holder hello: %v %v", typ, err)
+	}
+	data, _ := json.Marshal(Hello{Protocol: 1}) //nolint:errchkjson // a plain struct
+	if err := writeMsg(conn, MsgHello, data); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := readMsg(conn); err == nil {
+		t.Fatal("the holder keeps an old peer")
+	}
+	again := dial(t, cfg.Socket)
+	defer again.Close()
+
+	if err := good.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-errc; err != nil {
+		t.Fatal(err)
 	}
 }
 

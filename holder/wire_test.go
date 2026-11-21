@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -157,36 +156,6 @@ func TestWireReplyBeforeExit(t *testing.T) {
 	}
 	if err := <-errc; err != nil {
 		t.Fatal(err)
-	}
-}
-
-// TestDialOldHolder checks that a client speaks to a holder of protocol 1.
-func TestDialOldHolder(t *testing.T) {
-	t.Parallel()
-	path := filepath.Join(shortDir(t), "old.sock")
-	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "unix", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-	got := make(chan Hello, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		data, _ := json.Marshal(Hello{Protocol: 1, ID: "old"}) //nolint:errchkjson // a plain struct
-		_ = writeMsg(conn, MsgHello, data)                     // the client checks the result
-		_, p, _ := readMsg(conn)                               //nolint:errcheck // the hello check covers it
-		var h Hello
-		_ = json.Unmarshal(p, &h) // the hello check covers it
-		got <- h
-	}()
-	c := dial(t, path)
-	defer c.Close()
-	if h := <-got; h.Protocol != 1 {
-		t.Fatalf("the client answers protocol %d", h.Protocol)
 	}
 }
 
