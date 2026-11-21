@@ -73,7 +73,7 @@ func (i *Installer) Install(harness, dir string) error {
 	if err != nil {
 		return err
 	}
-	return i.edit(filepath.Join(dir, v.config), func(cfg []byte) ([]byte, error) { return i.install(v, harness, cfg) })
+	return i.edit(filepath.Join(dir, v.Config), func(cfg []byte) ([]byte, error) { return i.install(v, harness, cfg) })
 }
 
 // Remove takes out only the hook entries of this visor.
@@ -82,7 +82,7 @@ func (i *Installer) Remove(harness, dir string) error {
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(dir, v.config)
+	path := filepath.Join(dir, v.Config)
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
@@ -95,13 +95,13 @@ func (i *Installer) Status(harness, dir string) (State, error) {
 	if err != nil {
 		return "", err
 	}
-	cfg, err := os.ReadFile(filepath.Join(dir, v.config))
+	cfg, err := os.ReadFile(filepath.Join(dir, v.Config))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return "", fmt.Errorf("hook status of %s: %w", harness, err)
 	}
 	var trust []byte
-	if v.trust != "" {
-		trust, err = os.ReadFile(filepath.Join(dir, v.trust))
+	if v.Trust != "" {
+		trust, err = os.ReadFile(filepath.Join(dir, v.Trust))
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return "", fmt.Errorf("hook status of %s: %w", harness, err)
 		}
@@ -124,7 +124,7 @@ func (i *Installer) state(v vendor, cfg, trust []byte) State {
 		return StateMissing
 	case outdated:
 		return StateOutdated
-	case v.trust != "" && !v.trusted(p, trust):
+	case v.Trust != "" && !v.trusted(p, trust):
 		return StateUntrusted
 	}
 	return StateInstalled
@@ -190,9 +190,9 @@ func (m marker) version(cmd string) (int, bool) {
 // trust file has [hooks.state."<path>:<event>:<group>:<handler>"] tables
 // with a trusted_hash.
 func (v vendor) trusted(p map[string]place, trust []byte) bool {
-	keys := trustedKeys(trust, v.config)
+	keys := trustedKeys(trust, v.Config)
 	for name, pl := range p {
-		if !keys[fmt.Sprintf("%s:%s:%d:%d", v.config, snake(name), pl.group, pl.handler)] {
+		if !keys[fmt.Sprintf("%s:%s:%d:%d", v.Config, snake(name), pl.group, pl.handler)] {
 			return false
 		}
 	}

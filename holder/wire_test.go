@@ -8,6 +8,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -205,7 +208,7 @@ func wireConfig(t *testing.T, id string) Config {
 	dir := shortDir(t)
 	return Config{
 		ID: id, Mode: ModeWire, Socket: filepath.Join(dir, "w.sock"), ExitFile: filepath.Join(dir, "w.exit"), Spool: filepath.Join(dir, "w.spool"),
-		Wire: &WireConfig{Harness: "fake", WorkingDir: dir, Drivers: map[string]agentwire.Driver{"fake": agentwire.FakeDriver{Script: wireTurns}}},
+		Wire: &WireConfig{StartRequest: agentwire.StartRequest{Harness: "fake", WorkingDir: dir}, Drivers: map[string]agentwire.Driver{"fake": agentwire.FakeDriver{Script: wireTurns}}},
 	}
 }
 
@@ -220,5 +223,86 @@ func finishCall(s *wireServer) {
 	select {
 	case s.callDone <- struct{}{}:
 	default:
+	}
+}
+
+func TestWireConfigJSON(t *testing.T) {
+	t.Parallel()
+	in := WireConfig{
+		StartRequest: agentwire.StartRequest{
+			Harness: "claude", Binary: "/bin/claude", WorkingDir: "/w", Env: map[string]string{"A": "b"}, Home: "/h",
+			Model: "m", Effort: "high", Permissions: agentwire.PermissionPolicy{},
+			MCPServers: []agentwire.MCPServer{{Name: "s"}}, Skills: []agentwire.Skill{{Name: "k"}}, Instructions: "i",
+			ExtraArgs: []string{"-x"}, Raw: map[string]any{"r": "v"},
+			LogPath: "/f", FragmentLogPath: "/g", LogFragments: true,
+		},
+		Resume: true, VendorID: "v-1", Ledger: "/l", ClientName: "c", ClientVersion: "1",
+	}
+	data, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	want, err := os.ReadFile("testdata/wire-config.keys")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(keys, "\n") + "\n"; got != string(want) {
+		t.Fatalf("keys:\n%s\nwant:\n%s", got, want)
+	}
+	var out WireConfig
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(in, out) {
+		t.Fatalf("round trip:\n%+v\n%+v", out, in)
+	}
+}
+
+// recordDriver keeps the call and the request of the last open.
+type recordDriver struct {
+	agentwire.Driver
+	call string
+	req  agentwire.StartRequest
+}
+
+func (d *recordDriver) Start(ctx context.Context, req agentwire.StartRequest) (agentwire.Session, error) {
+	d.call, d.req = "start", req
+	return d.Driver.Start(ctx, req)
+}
+
+func (d *recordDriver) Resume(ctx context.Context, req agentwire.StartRequest) (agentwire.Session, error) {
+	d.call, d.req = "resume", req
+	return d.Driver.Resume(ctx, req)
+}
+
+func TestWireResumeSetsSessionID(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		resume   bool
+		call, id string
+	}{{true, "resume", "v-1"}, {false, "start", ""}} {
+		d := &recordDriver{Driver: agentwire.FakeDriver{Script: wireTurns}}
+		rt := agentwire.New(agentwire.Options{})
+		rt.SetDriver("fake", d)
+		s := &wireServer{rt: rt, cfg: Config{Wire: &WireConfig{
+			StartRequest: agentwire.StartRequest{Harness: "fake", WorkingDir: t.TempDir()}, Resume: tc.resume, VendorID: "v-1",
+		}}}
+		sess, err := s.open(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = sess.Close(t.Context())
+		if d.call != tc.call || d.req.SessionID != tc.id {
+			t.Fatalf("resume=%v: call %q, session id %q", tc.resume, d.call, d.req.SessionID)
+		}
 	}
 }

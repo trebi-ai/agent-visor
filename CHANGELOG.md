@@ -6,6 +6,9 @@
 - Removed (breaking): the holder protocol version 1 and `holder.MinProtocol`. `holder.Dial` and both holders speak only version 2. No tagged release made a version 1 holder. A version 1 holder that still runs is not recovered: its session becomes lost or suspended, and the holder runs until its process ends.
 - Added: `holder.Ring`, the buffer that keeps the last bytes of the terminal output.
 - Changed: less allocation for terminal output and event subscribers. The holder replies to the last open call without a poll step.
+- Changed: the hook facts of the vendor CLIs come from agent-wire (`agentwire.Hooks`). The installed hooks do not change.
+- Changed (breaking): `holder.WireConfig` embeds `agentwire.StartRequest`. The JSON form of the holder config does not change. The Go fields `FrameLog` and `FragmentLog` are now `LogPath` and `FragmentLogPath`.
+- Changed: requires agent-wire v0.15.0.
 
 ## v0.6.1 (2026-11-14)
 

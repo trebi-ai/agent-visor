@@ -6,6 +6,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -119,7 +120,7 @@ func TestOutdated(t *testing.T) {
 	installed := readTestdata(t, "claude/settings.installed.json")
 	old := bytes.ReplaceAll(installed, []byte(markerPrefix+"1:"), []byte(markerPrefix+"0:"))
 	old = bytes.ReplaceAll(old, []byte(testExe), []byte("/opt/old/example"))
-	v := vendors["claude"]
+	v, _ := lookup("claude")
 	if st := i.state(v, old, nil); st != StateOutdated {
 		t.Fatalf("status: %s", st)
 	}
@@ -162,7 +163,7 @@ func TestEmptyAndMissingConfig(t *testing.T) {
 func TestCodexTrust(t *testing.T) {
 	t.Parallel()
 	i := newTestInstaller(t, "example")
-	v := vendors["codex"]
+	v, _ := lookup("codex")
 	installed := readTestdata(t, "codex/hooks.installed.json")
 	for name, tc := range map[string]struct {
 		cfg   []byte
@@ -268,4 +269,17 @@ func home(t *testing.T, files map[string]string) string {
 		}
 	}
 	return dir
+}
+
+func TestNamesFromAgentWire(t *testing.T) {
+	t.Parallel()
+	if got := Names(); !slices.Equal(got, []string{"claude", "codex"}) {
+		t.Fatalf("names: %v", got)
+	}
+	if Supported("opencode") {
+		t.Fatal("opencode has no hook support")
+	}
+	if _, err := lookup("opencode"); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("lookup: %v", err)
+	}
 }

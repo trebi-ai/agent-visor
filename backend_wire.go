@@ -203,10 +203,8 @@ func (b *wireBackend) startHeld(ctx context.Context, l Launch) (Handle, error) {
 	cfg := holder.Config{
 		ID: id, Mode: holder.ModeWire, Socket: b.hs.socket(id), ExitFile: b.hs.exitFile(id), Spool: b.hs.spool(id),
 		Wire: &holder.WireConfig{
-			Harness: string(req.Harness), Binary: req.Binary, WorkingDir: req.WorkingDir, Env: req.Env, Home: req.Home,
-			Resume: l.Resume, VendorID: l.Session.VendorID, Model: req.Model, Effort: req.Effort, Permissions: req.Permissions,
-			MCPServers: req.MCPServers, Skills: req.Skills, Instructions: req.Instructions, ExtraArgs: req.ExtraArgs, Raw: req.Raw,
-			FrameLog: req.LogPath, FragmentLog: req.FragmentLogPath, LogFragments: req.LogFragments, Ledger: filepath.Join(b.home, "sessions", id, "ledger.json"),
+			StartRequest: req, Resume: l.Resume, VendorID: l.Session.VendorID,
+			Ledger:     filepath.Join(b.home, "sessions", id, "ledger.json"),
 			ClientName: b.client, ClientVersion: b.clientVersion,
 		},
 	}

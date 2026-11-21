@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	agentwire "github.com/trebi-ai/agent-wire"
 )
 
 // Kind is the neutral kind of a hook event.
@@ -114,9 +116,9 @@ func Parse(harness string, data []byte) (Event, bool, error) {
 	e := Event{
 		Harness: harness, Name: p.HookEventName, VendorID: p.SessionID, Cwd: p.Cwd, Transcript: p.TranscriptPath,
 	}
-	question := v.question(p.ToolName)
+	question := v.Question(p.ToolName)
 	// A subagent event changes the session only when it waits for the user.
-	if p.AgentID != "" && p.HookEventName != evPermissionRequest && (p.HookEventName != evPreToolUse || !question) {
+	if p.AgentID != "" && p.HookEventName != agentwire.HookPermissionRequest && (p.HookEventName != agentwire.HookPreToolUse || !question) {
 		return e, false, nil
 	}
 	e.Kind = v.kind(p, question)
@@ -164,7 +166,7 @@ func (e Event) fill(p payload, question bool) Event {
 		e.Tool, e.ToolUseID = p.ToolName, p.ToolUseID
 	case KindStop:
 		e.Message, e.Interrupted, e.Error = p.LastAssistantMessage, p.IsInterrupt, p.Error
-		if p.HookEventName == evStopFailure && e.Error == "" {
+		if p.HookEventName == agentwire.HookStopFailure && e.Error == "" {
 			e.Error = "failed"
 		}
 	}
@@ -174,30 +176,30 @@ func (e Event) fill(p payload, question bool) Event {
 // kind maps a vendor event to its neutral kind, or "" to ignore it.
 func (v vendor) kind(p payload, question bool) Kind {
 	switch p.HookEventName {
-	case evSessionStart:
+	case agentwire.HookSessionStart:
 		// A compact restart runs inside a turn.
-		if p.Source == sourceCompact {
+		if p.Source == agentwire.HookSourceCompact {
 			return ""
 		}
 		return KindSessionStart
-	case evUserPromptSubmit:
+	case agentwire.HookUserPromptSubmit:
 		return KindPrompt
-	case evPreToolUse:
-		if question || (v.plan != "" && p.ToolName == v.plan) {
+	case agentwire.HookPreToolUse:
+		if question || (v.Plan != "" && p.ToolName == v.Plan) {
 			return KindRequest
 		}
 		return KindTool
-	case evPostToolUse:
+	case agentwire.HookPostToolUse:
 		return KindToolDone
-	case evPermissionRequest:
+	case agentwire.HookPermissionRequest:
 		return KindRequest
-	case evNotification:
-		if p.NotificationType == notificationPermission {
+	case agentwire.HookNotification:
+		if p.NotificationType == agentwire.HookNotificationPermission {
 			return KindAttention
 		}
-	case evStop, evStopFailure:
+	case agentwire.HookStop, agentwire.HookStopFailure:
 		return KindStop
-	case evSessionEnd:
+	case agentwire.HookSessionEnd:
 		return KindSessionEnd
 	}
 	return ""

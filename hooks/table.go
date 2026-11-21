@@ -3,13 +3,15 @@ package hooks
 import (
 	"encoding/json"
 	"fmt"
+
+	agentwire "github.com/trebi-ai/agent-wire"
 )
 
 // table edits the hook table of a config file: hooks.<Event>[] of groups
 // {matcher, hooks[]} of handlers {type, command, timeout}. Claude Code
 // settings.json and Codex hooks.json have the same shape.
 type table struct {
-	events []hookEvent
+	events []agentwire.HookEvent
 	// timeout is in seconds.
 	timeout int
 }
@@ -133,7 +135,7 @@ func (t table) state(p map[string]place) (installed, outdated bool) {
 	return true, false
 }
 
-func (t table) group(e hookEvent, cmd string) (json.RawMessage, error) {
+func (t table) group(e agentwire.HookEvent, cmd string) (json.RawMessage, error) {
 	type handler struct {
 		Type    string `json:"type"`
 		Command string `json:"command"`
@@ -146,13 +148,13 @@ func (t table) group(e hookEvent, cmd string) (json.RawMessage, error) {
 	return marshal(group{e.Matcher, []handler{{"command", cmd, t.timeout}}})
 }
 
-func (t table) wants(event string) (hookEvent, bool) {
+func (t table) wants(event string) (agentwire.HookEvent, bool) {
 	for _, e := range t.events {
 		if e.Name == event {
 			return e, true
 		}
 	}
-	return hookEvent{}, false
+	return agentwire.HookEvent{}, false
 }
 
 func (t table) read(cfg []byte) (root, hooks object, err error) {
