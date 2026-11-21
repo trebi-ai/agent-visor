@@ -34,6 +34,7 @@ func (b *Backend) poll(ctx context.Context) {
 func (b *Backend) detach() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.detached = true
 	for id, h := range b.handles {
 		close(h.events)
 		delete(b.handles, id)

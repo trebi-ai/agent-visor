@@ -104,6 +104,7 @@ type Backend struct {
 
 	mu       sync.Mutex
 	handles  map[string]*handle // by visor session
+	detached bool               // detach ran; a new handle has closed events
 	reported map[string]bool    // found panes that wait for Adopt
 	found    chan agentvisor.Found
 	wake     chan struct{}
@@ -295,7 +296,11 @@ type binding struct {
 func (b *Backend) bind(id string, bd binding, idle bool) *handle {
 	h := &handle{b: b, id: id, bd: bd, events: make(chan agentvisor.Event, 32), idle: idle, born: time.Now()}
 	b.mu.Lock()
-	b.handles[id] = h
+	if b.detached {
+		close(h.events)
+	} else {
+		b.handles[id] = h
+	}
 	b.mu.Unlock()
 	b.store(id, bd)
 	b.poke()
