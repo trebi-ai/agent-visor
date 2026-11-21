@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.7.0 (unreleased)
+## v0.7.0 (2026-11-21)
 
 - Changed (breaking): `cli.Visor` has `Hook`. A custom `Options.Dial` must return a type with `Hook`. `Visor` and `Client` already have it.
 - Removed (breaking): the holder protocol version 1 and `holder.MinProtocol`. `holder.Dial` and both holders speak only version 2. No tagged release made a version 1 holder. A version 1 holder that still runs is not recovered: its session becomes lost or suspended, and the holder runs until its process ends.
