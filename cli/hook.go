@@ -14,15 +14,8 @@ import (
 	"github.com/trebi-ai/agent-visor/hooks"
 )
 
-// hookVisor is the hook API of the visor.
-type hookVisor interface {
-	Hook(ctx context.Context, c agentvisor.HookCall) (agentvisor.Session, error)
-}
-
 // hookWait limits the call to the visor. The vendor waits for the hook.
 const hookWait = 3 * time.Second
-
-var _ hookVisor = (*agentvisor.Client)(nil)
 
 // hook sends the payload on stdin to the visor. When the visor does not
 // answer, it keeps the call in the spool of the home. A call that the visor
@@ -61,11 +54,7 @@ func (a *app) sendHook(ctx context.Context, cmd *cli.Command, c agentvisor.HookC
 	ctx, cancel := context.WithTimeout(ctx, hookWait)
 	defer cancel()
 	return a.with(ctx, cmd, func(v Visor) error {
-		h, ok := v.(hookVisor)
-		if !ok {
-			return a.notAvailable(ctx, cmd)
-		}
-		_, err := h.Hook(ctx, c)
+		_, err := v.Hook(ctx, c)
 		return err
 	})
 }
@@ -73,7 +62,7 @@ func (a *app) sendHook(ctx context.Context, cmd *cli.Command, c agentvisor.HookC
 // rejected reports whether the visor read the call and refused it. A spool
 // does not help such a call.
 func rejected(err error) bool {
-	for _, e := range []error{agentvisor.ErrInvalid, agentvisor.ErrNotFound, agentvisor.ErrUnsupported, agentvisor.ErrState, errNotAvailable} {
+	for _, e := range []error{agentvisor.ErrInvalid, agentvisor.ErrNotFound, agentvisor.ErrUnsupported, agentvisor.ErrState} {
 		if errors.Is(err, e) {
 			return true
 		}

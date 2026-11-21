@@ -73,6 +73,9 @@ func (f *fakeVisor) Answer(context.Context, string, string, agentvisor.Answer) e
 	return agentvisor.ErrUnsupported
 }
 func (f *fakeVisor) Stop(context.Context, string) error { return agentvisor.ErrUnsupported }
+func (f *fakeVisor) Hook(context.Context, agentvisor.HookCall) (agentvisor.Session, error) {
+	return agentvisor.Session{}, agentvisor.ErrUnsupported
+}
 func (f *fakeVisor) Events(context.Context, agentvisor.Filter, uint64) (*agentvisor.EventStream, error) {
 	return nil, agentvisor.ErrUnsupported
 }

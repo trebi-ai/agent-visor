@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 
 	"github.com/urfave/cli/v3"
@@ -53,6 +52,7 @@ type Visor interface {
 	Interrupt(ctx context.Context, id string) error
 	Answer(ctx context.Context, id, requestID string, a agentvisor.Answer) error
 	Stop(ctx context.Context, id string) error
+	Hook(ctx context.Context, c agentvisor.HookCall) (agentvisor.Session, error)
 	Events(ctx context.Context, f agentvisor.Filter, after uint64) (*agentvisor.EventStream, error)
 	Projects(ctx context.Context, f agentvisor.Filter) ([]agentvisor.Project, error)
 	ForgetProject(ctx context.Context, id string) error
@@ -90,9 +90,6 @@ var (
 	_ Visor = (*agentvisor.Client)(nil)
 	_ Visor = (*agentvisor.Visor)(nil)
 )
-
-// errNotAvailable marks a command whose API is not in this build.
-var errNotAvailable = errors.New("not available yet")
 
 // Command gives the command tree.
 func Command(opts Options) *cli.Command {
@@ -177,11 +174,6 @@ func (a *app) with(ctx context.Context, cmd *cli.Command, fn func(v Visor) error
 
 func (a *app) out(cmd *cli.Command) printer {
 	return printer{w: a.opts.Stdout, json: cmd.Bool("json")}
-}
-
-// notAvailable is the action of a command whose API is not in this build.
-func (a *app) notAvailable(_ context.Context, cmd *cli.Command) error {
-	return fmt.Errorf("%s: %w", strings.TrimPrefix(cmd.FullName(), a.fullName(cmd)+" "), errNotAvailable)
 }
 
 // args checks the count of positional arguments.
